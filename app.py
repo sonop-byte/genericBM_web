@@ -23,24 +23,40 @@ st.set_page_config(
     layout="centered",
 )
 
-# ---- ヘッダー（ロゴ + タイトル + 説明）----
+# ---- ヘッダー（ロゴ + タイトル + 説明）完全中央寄せ ----
 st.markdown(
     """
-    <div style='text-align:center;'>
-        <img src='https://raw.githubusercontent.com/sonop-byte/genericBM_web/main/gBmicon.png'
-             width='120'
-             style='display:block; margin-left:auto; margin-right:auto; margin-bottom:10px;'>
-        <h1 style='font-size:2.4em; margin-bottom:6px; text-align:center;'>
-            genericBM – PDF差分比較ツール（Web版）
-        </h1>
-        <p style='color:gray; font-size:1.05em; margin-top:0; text-align:center;'>
-            修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。
-        </p>
+    <style>
+      /* 見出し横のアンカーリンクがレイアウトをズラすのを防ぐ */
+      .css-10trblm a.anchor, .stMarkdown a.anchor { display:none !important; }
+
+      /* ヘッダー全体を中央寄せ＆最大幅内で中央に配置 */
+      .gbm-header {
+        display:flex; flex-direction:column;
+        align-items:center; justify-content:center;
+        text-align:center; margin: 12px auto 10px auto;
+        max-width: 820px; /* お好みで */
+      }
+      .gbm-header h1{
+        font-size: 2.4em; line-height:1.25;
+        margin: 8px 0 6px 0; font-weight: 800;
+      }
+      .gbm-header p{
+        color:#6b7280; font-size:1.05em; margin:0;
+      }
+      .gbm-logo{
+        display:block; margin: 0 auto 10px auto;
+      }
+    </style>
+    <div class="gbm-header">
+      <img src="https://raw.githubusercontent.com/sonop-byte/genericBM_web/main/gBmicon.png"
+           width="120" class="gbm-logo" alt="genericBM logo" />
+      <h1>genericBM – PDF差分比較ツール（Web版）</h1>
+      <p>修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。</p>
     </div>
     """,
     unsafe_allow_html=True
 )
-
 
 # （以降はこれまでのタブ／処理ロジックをそのまま続ける…）
 # ---------- 共通設定 ----------
