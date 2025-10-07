@@ -26,15 +26,21 @@ st.set_page_config(
 # ヘッダー表示（中央寄せ）
 _, col, _ = st.columns([1, 2, 1])
 with col:
-    st.image(icon_img, width=120)
-    st.markdown(
-        "<h1 style='text-align:center; font-size:2.2em; margin-bottom:4px;'>"
-        "genericBM – PDF差分比較ツール（Web版）</h1>"
-        "<p style='text-align:center; color:gray; font-size:1.0em; margin-top:0;'>"
-        "修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。"
-        "</p>",
-        unsafe_allow_html=True,
-    )
+# ---- ヘッダー（ロゴ + タイトル + 説明）----
+st.markdown(
+    """
+    <div style='text-align:center;'>
+        <img src='https://raw.githubusercontent.com/sonop-byte/genericBM_web/main/gBmicon.png'
+             width='120' style='display:block; margin-left:auto; margin-right:auto; margin-bottom:10px;'>
+        <h1 style='font-size:2.2em; margin-bottom:4px;'>genericBM – PDF差分比較ツール（Web版）</h1>
+        <p style='color:gray; font-size:1.0em; margin-top:0;'>
+            修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # （以降はこれまでのタブ／処理ロジックをそのまま続ける…）
 # ---------- 共通設定 ----------
