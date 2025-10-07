@@ -28,9 +28,12 @@ st.markdown(
     """
     <div style='text-align:center;'>
         <img src='https://raw.githubusercontent.com/sonop-byte/genericBM_web/main/gBmicon.png'
-             width='120' style='display:block; margin-left:auto; margin-right:auto; margin-bottom:10px;'>
-        <h1 style='font-size:2.2em; margin-bottom:4px;'>genericBM – PDF差分比較ツール（Web版）</h1>
-        <p style='color:gray; font-size:1.0em; margin-top:0;'>
+             width='120'
+             style='display:block; margin-left:auto; margin-right:auto; margin-bottom:10px;'>
+        <h1 style='font-size:2.4em; margin-bottom:6px; text-align:center;'>
+            genericBM – PDF差分比較ツール（Web版）
+        </h1>
+        <p style='color:gray; font-size:1.05em; margin-top:0; text-align:center;'>
             修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。
         </p>
     </div>
