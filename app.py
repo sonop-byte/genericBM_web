@@ -23,9 +23,6 @@ st.set_page_config(
     layout="centered",
 )
 
-# ヘッダー表示（中央寄せ）
-_, col, _ = st.columns([1, 2, 1])
-with col:
 # ---- ヘッダー（ロゴ + タイトル + 説明）----
 st.markdown(
     """
