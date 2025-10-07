@@ -35,7 +35,7 @@ st.markdown(
         display:flex; flex-direction:column;
         align-items:center; justify-content:center;
         text-align:center; margin: 12px auto 10px auto;
-        max-width: 820px; /* お好みで */
+        max-width: 1000px; /* お好みで */
       }
       .gbm-header h1{
         font-size: 2.4em; line-height:1.25;
