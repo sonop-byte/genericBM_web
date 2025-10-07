@@ -6,29 +6,37 @@ import tempfile
 from datetime import datetime
 
 import streamlit as st
+from PIL import Image
 from pdf_diff_core_small import generate_diff
 
-# ---------- ページ設定 ----------
+# ページ設定（アイコン画像を PIL 画像オブジェクトとして渡す）
+ICON_PATH = "gBmicon.png"
+# 確認用例外を出す if not found
+if not os.path.exists(ICON_PATH):
+    raise FileNotFoundError(f"Icon file not found: {ICON_PATH}")
+
+icon_img = Image.open(ICON_PATH)
+
 st.set_page_config(
     page_title="genericBM – PDF差分比較ツール",
-    page_icon="gBmicon.png",   # リポジトリ直下に gBmicon.png を置く
+    page_icon=icon_img,
     layout="centered",
 )
 
-# ---------- ヘッダー（中央寄せ：ロゴ + タイトル + 説明） ----------
-st.markdown(
-    """
-    <div style='text-align:center;'>
-        <img src='gBmicon.png' width='120' style='margin-bottom:10px;'>
-        <h1 style='font-size:2.2em; margin-bottom:4px;'>genericBM – PDF差分比較ツール（Web版）</h1>
-        <p style='color:gray; font-size:1.0em; margin-top:0;'>
-            修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# ヘッダー表示（中央寄せ）
+_, col, _ = st.columns([1, 2, 1])
+with col:
+    st.image(icon_img, width=120)
+    st.markdown(
+        "<h1 style='text-align:center; font-size:2.2em; margin-bottom:4px;'>"
+        "genericBM – PDF差分比較ツール（Web版）</h1>"
+        "<p style='text-align:center; color:gray; font-size:1.0em; margin-top:0;'>"
+        "修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。"
+        "</p>",
+        unsafe_allow_html=True,
+    )
 
+# （以降はこれまでのタブ／処理ロジックをそのまま続ける…）
 # ---------- 共通設定 ----------
 with st.expander("詳細設定", expanded=False):
     dpi = st.slider("出力PDFの解像度（dpi）", min_value=100, max_value=400, value=200, step=50)
