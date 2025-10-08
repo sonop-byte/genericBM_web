@@ -8,7 +8,7 @@ from datetime import datetime
 import unicodedata
 
 import streamlit as st
-from streamlit import components_v1 as components
+import streamlit.components.v1 as components
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
