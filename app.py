@@ -83,104 +83,7 @@ tab_single, tab_folder, tab_multi = st.tabs([
     "📚 複数PDF 1:1 比較",
 ])
 
-# ====== タブ1：PDF 2枚比較 ======
-with tab_single:
-    c1, c2 = st.columns(2)
-    with c1:
-        before_pdf = st.file_uploader("修正前（Before）PDF", type=["pdf"], key="before_single")
-    with c2:
-        after_pdf  = st.file_uploader("修正後（After）PDF", type=["pdf"], key="after_single")
-
-    if before_pdf and after_pdf:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            before_path = os.path.join(tmpdir, "before.pdf")
-            after_path  = os.path.join(tmpdir, "after.pdf")
-            with open(before_path, "wb") as f:
-                f.write(before_pdf.read())
-            with open(after_path, "wb") as f:
-                f.write(after_pdf.read())
-
-            before_name = safe_base(before_pdf.name)
-            after_name  = safe_base(after_pdf.name)
-            out_filename = f"{before_name}-{after_name}_diff.pdf"
-            out_path = os.path.join(tmpdir, out_filename)
-
-            st.info("🔄 差分PDFを生成中…")
-            try:
-                generate_diff(before_path, after_path, out_path, dpi=dpi)
-                st.success("✅ 差分PDFの生成が完了しました！")
-                with open(out_path, "rb") as f:
-                    st.download_button(
-                        "📥 差分PDFをダウンロード",
-                        f.read(),
-                        file_name=out_filename,
-                        mime="application/pdf"
-                    )
-            except Exception as e:
-                st.error(f"エラーが発生しました：{e}")
-    else:
-        st.caption("※ 2つのPDFを選択してください。")
-
-# ====== タブ2：フォルダ比較（ZIP） ======
-with tab_folder:
-    c1, c2 = st.columns(2)
-    with c1:
-        before_zip = st.file_uploader("Before フォルダのZIP（直下PDFのみ比較）", type=["zip"], key="before_zip")
-    with c2:
-        after_zip  = st.file_uploader("After フォルダのZIP（直下PDFのみ比較）",  type=["zip"], key="after_zip")
-
-    st.caption("⚠️ フォルダはZIPにしてアップロードしてください。直下PDFのみ対象・ファイル名順に1:1で比較します。")
-
-    if before_zip and after_zip:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                before_root = extract_zip_to_root(tmpdir, before_zip, "before")
-                after_root  = extract_zip_to_root(tmpdir,  after_zip,  "after")
-
-                before_pdfs = collect_top_level_pdfs(before_root)
-                after_pdfs  = collect_top_level_pdfs(after_root)
-                if not before_pdfs:
-                    st.error("Before 側にPDFが見つかりませんでした（直下のみ対象）。"); st.stop()
-                if not after_pdfs:
-                    st.error("After 側にPDFが見つかりませんでした（直下のみ対象）。"); st.stop()
-
-                total = min(len(before_pdfs), len(after_pdfs))
-                if total == 0:
-                    st.error("比較できるペアがありません。"); st.stop()
-
-                out_mem = io.BytesIO()
-                with zipfile.ZipFile(out_mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    prog = st.progress(0)
-                    status = st.empty()
-                    for i in range(total):
-                        b = before_pdfs[i]; a = after_pdfs[i]
-                        bname = safe_base(b); aname = safe_base(a)
-                        out_name = f"{bname}-{aname}_diff.pdf"
-                        out_tmp  = os.path.join(tmpdir, out_name)
-
-                        status.write(f"🔄 生成中: {i+1}/{total} — {bname} vs {aname}")
-                        generate_diff(b, a, out_tmp, dpi=dpi)
-                        zf.write(out_tmp, arcname=out_name)
-                        prog.progress(int((i + 1) / total * 100))
-                status.write("✅ すべての比較が完了しました。")
-                prog.progress(100)
-
-                before_label = safe_base(before_zip.name)
-                after_label  = safe_base(after_zip.name)
-                date_tag = datetime.now().strftime("%Y%m%d")
-                zip_name = f"{before_label}-{after_label}_diff_{date_tag}.zip"
-
-                st.success(f"📦 {total}件の比較結果をZIPにまとめました。")
-                st.download_button(
-                    "📥 結果ZIPをダウンロード",
-                    data=out_mem.getvalue(),
-                    file_name=zip_name,
-                    mime="application/zip"
-                )
-            except Exception as e:
-                st.error(f"エラーが発生しました：{e}")
-
-# ====== タブ3：複数PDF 1:1 比較機能 ======
+# ====== 📚 複数PDF 1:1 比較機能 ======
 if compare_mode == "multiple_pdf":
 
     before_files = st.file_uploader("Before側PDF（複数可）", type="pdf", accept_multiple_files=True)
@@ -190,26 +93,49 @@ if compare_mode == "multiple_pdf":
 
         if st.button("比較を開始"):
             results = []
+
             for b_file, a_file in zip(sorted(before_files, key=lambda f: f.name),
                                       sorted(after_files, key=lambda f: f.name)):
 
-                with st.spinner(f"{b_file.name} と {a_file.name} を比較中..."):
-                    diff_name = f"{b_file.name.replace('.pdf','')}-{a_file.name.replace('.pdf','')}_diff.pdf"
-                    out_path = os.path.join(tempfile.gettempdir(), diff_name)
-                    generate_diff(b_file, a_file, out_path)
-                    results.append(out_path)
+                diff_name = f"{b_file.name.replace('.pdf','')}-{a_file.name.replace('.pdf','')}_diff.pdf"
+                out_path = os.path.join(tempfile.gettempdir(), diff_name)
 
-            # すべて完了 → ZIP化して1回だけDLリンクを出す
+                with st.spinner(f"🔍 {b_file.name} と {a_file.name} を比較中..."):
+                    # 差分生成関数（既存のgenerate_diff）を呼ぶ
+                    generate_diff(b_file, a_file, out_path)
+                    results.append((diff_name, out_path))
+
+            # ====== ✅ 結果出力セクション ======
+            st.success(f"✅ 比較が完了しました（{len(results)}件）")
+
+            # --- ZIPにまとめて出力 ---
             zip_path = os.path.join(tempfile.gettempdir(), "genericBM_results.zip")
             with zipfile.ZipFile(zip_path, "w") as zf:
-                for p in results:
-                    zf.write(p, os.path.basename(p))
+                for name, path in results:
+                    zf.write(path, name)
 
-            st.success(f"✅ 比較が完了しました（{len(results)}件）")
+            # --- 個別DLボタン ---
+            st.subheader("📄 個別ダウンロード")
+            for name, path in results:
+                with open(path, "rb") as f:
+                    st.download_button(
+                        label=f"⬇️ {name}",
+                        data=f,
+                        file_name=name,
+                        mime="application/pdf"
+                    )
+
+            # --- ZIP一括DLボタン ---
+            st.subheader("💾 ZIP一括ダウンロード")
             with open(zip_path, "rb") as f:
-                st.download_button("📥 結果をダウンロード", f, file_name="genericBM_results.zip")
+                st.download_button(
+                    label="📥 すべてまとめてダウンロード（ZIP）",
+                    data=f,
+                    file_name="genericBM_results.zip",
+                    mime="application/zip"
+                )
 
-            # ✅ ここで処理を止める
+            # ✅ 比較作業をここで止める（ループ防止）
             st.stop()
 
     elif before_files or after_files:
