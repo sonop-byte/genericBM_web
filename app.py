@@ -1,4 +1,4 @@
-# app.py — genericBM Web（1:1比較固定＋3ファイル対応）
+# app.py — genericBM Web（ファイル保持＋プレビュー＋日付追加）
 import os
 import io
 import zipfile
@@ -51,6 +51,20 @@ def save_uploaded_to(path: str, uploaded):
     with open(path, "wb") as f:
         f.write(uploaded.read())
 
+def add_date_suffix(filename: str) -> str:
+    """ファイル名の末尾に_YYYYMMDDを追加"""
+    base, ext = os.path.splitext(filename)
+    date_tag = datetime.now().strftime("%Y%m%d")
+    return f"{base}_{date_tag}{ext}"
+
+# ===== セッション初期化 =====
+if "results_two" not in st.session_state:
+    st.session_state.results_two = []
+if "results_three" not in st.session_state:
+    st.session_state.results_three = []
+if "preview_file" not in st.session_state:
+    st.session_state.preview_file = None
+
 # ===== タブ構成 =====
 tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3ファイル比較（1対2）"])
 
@@ -65,6 +79,7 @@ with tab_two:
         after_files  = st.file_uploader("After 側PDF（複数可）",  type=["pdf"], accept_multiple_files=True, key="after_two")
 
     if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
+        st.session_state.results_two.clear()
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
                 def save_all(files, prefix):
@@ -82,7 +97,6 @@ with tab_two:
                 if total == 0:
                     st.warning("比較対象がありません。"); st.stop()
 
-                results = []
                 prog = st.progress(0)
                 status = st.empty()
 
@@ -91,50 +105,57 @@ with tab_two:
                     a = a_paths[i]
                     bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
                     adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
-                    out_name = f"{bdisp}vs{adisp}.pdf"
+                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
                     out_tmp  = os.path.join(tmpdir, out_name)
                     status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
                     generate_diff(b, a, out_tmp, dpi=dpi)
-                    results.append((out_name, out_tmp))
+                    with open(out_tmp, "rb") as f:
+                        data = f.read()
+                    st.session_state.results_two.append((out_name, data))
                     prog.progress(int((i+1)/total*100))
 
                 status.write("✅ 比較が完了しました。")
                 prog.progress(100)
 
-                st.subheader("📄 個別ダウンロード")
-                for name, path in results:
-                    with open(path, "rb") as f:
-                        st.download_button(f"⬇️ {name}", f.read(), file_name=name, mime="application/pdf", key=f"dl_two_{name}")
-
-                st.subheader("💾 ZIP一括ダウンロード")
-                out_mem = io.BytesIO()
-                with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for name, path in results:
-                        zf.write(path, arcname=name)
-                zip_name = f"genericBM_1to1_{datetime.now().strftime('%Y%m%d')}.zip"
-                st.download_button("📥 ZIP一括ダウンロード", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
-
             except Exception as e:
                 st.error(f"エラー: {e}")
         st.stop()
+
+    # 生成済みPDF一覧（保持）
+    if st.session_state.results_two:
+        st.subheader("📄 生成済み差分PDF")
+        for name, data in st.session_state.results_two:
+            c1, c2 = st.columns([0.8, 0.2])
+            with c1:
+                if st.button(f"👁 {name}", key=f"preview_two_{name}"):
+                    st.session_state.preview_file = (name, data)
+            with c2:
+                st.download_button("⬇️ DL", data=data, file_name=name, mime="application/pdf", key=f"dl_two_{name}")
+
+        # ZIP一括DL
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_two:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to1_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
 # ---------------------------------------------------------------
 # 📚 タブ2：3ファイル比較（Before1 vs AfterA・AfterB）
 # ---------------------------------------------------------------
 with tab_three:
-    st.write("Before 1ファイル と After 2ファイルをアップロードしてください。")
-
     before_file = st.file_uploader("Before 側PDF（1つ）", type=["pdf"], key="before_three")
     after_files = st.file_uploader("After 側PDF（2つ）", type=["pdf"], accept_multiple_files=True, key="after_three")
 
     if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
+        st.session_state.results_three.clear()
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
                 before_path = os.path.join(tmpdir, "before.pdf")
                 save_uploaded_to(before_path, before_file)
                 bdisp = safe_base(before_file.name)
 
-                results = []
                 prog = st.progress(0)
                 status = st.empty()
 
@@ -142,35 +163,54 @@ with tab_three:
                     a_path = os.path.join(tmpdir, f"after_{i}.pdf")
                     save_uploaded_to(a_path, a_file)
                     adisp = safe_base(a_file.name)
-
-                    out_name = f"{bdisp}vs{adisp}.pdf"
+                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
                     out_tmp  = os.path.join(tmpdir, out_name)
                     status.write(f"🔄 生成中: {i}/2 — {bdisp} vs {adisp}")
                     generate_diff(before_path, a_path, out_tmp, dpi=dpi)
-                    results.append((out_name, out_tmp))
+                    with open(out_tmp, "rb") as f:
+                        data = f.read()
+                    st.session_state.results_three.append((out_name, data))
                     prog.progress(int(i/2*100))
 
                 status.write("✅ 比較が完了しました。")
                 prog.progress(100)
 
-                st.subheader("📄 個別ダウンロード")
-                for name, path in results:
-                    with open(path, "rb") as f:
-                        st.download_button(f"⬇️ {name}", f.read(), file_name=name, mime="application/pdf", key=f"dl_three_{name}")
-
-                st.subheader("💾 ZIP一括ダウンロード")
-                out_mem = io.BytesIO()
-                with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for name, path in results:
-                        zf.write(path, arcname=name)
-                zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
-                st.download_button("📥 ZIP一括ダウンロード", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
-
             except Exception as e:
                 st.error(f"エラー: {e}")
         st.stop()
-    elif after_files and len(after_files) != 2:
-        st.info("After 側のPDFは2つアップロードしてください。")
+
+    # 生成済みPDF一覧（保持）
+    if st.session_state.results_three:
+        st.subheader("📄 生成済み差分PDF")
+        for name, data in st.session_state.results_three:
+            c1, c2 = st.columns([0.8, 0.2])
+            with c1:
+                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+                    st.session_state.preview_file = (name, data)
+            with c2:
+                st.download_button("⬇️ DL", data=data, file_name=name, mime="application/pdf", key=f"dl_three_{name}")
+
+        # ZIP一括DL
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_three:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
+
+# ---------------------------------------------------------------
+# 👁 プレビュー表示
+# ---------------------------------------------------------------
+if st.session_state.preview_file:
+    name, data = st.session_state.preview_file
+    st.markdown("---")
+    st.subheader(f"👁 プレビュー表示：{name}")
+    st.download_button("⬇️ このファイルをダウンロード", data=data, file_name=name, mime="application/pdf", key="preview_dl")
+    st.markdown(
+        f'<iframe src="data:application/pdf;base64,{data.decode("latin1")}" width="100%" height="600px"></iframe>',
+        unsafe_allow_html=True,
+    )
 
 # ===== フッター =====
 st.markdown("---")
