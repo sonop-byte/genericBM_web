@@ -61,13 +61,8 @@ def collect_top_level_pdfs(root_dir: str):
 
 def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     """
-    ZIPを展開し、比較ルートとなる“最も自然な”ディレクトリを返す。
-    優先順:
-      1) 展開直下にPDFがあれば → その直下ディレクトリ
-      2) 展開直下のサブディレクトリ（__MACOSX を除外）のうち、
-         直下にPDFを含むものが1つだけなら → そのサブディレクトリ
-      3) 展開直下のサブディレクトリ（__MACOSX を除外）が1つだけなら → そのサブディレクトリ
-      4) それ以外 → 展開ディレクトリ（ルート）
+    ZIPを展開し、比較ルートを返す。
+    - Macで作成したZIPの日本語ファイル名文字化けを自動修正。
     """
     zip_tmp_path = os.path.join(tmpdir, f"{label}.zip")
     with open(zip_tmp_path, "wb") as f:
@@ -75,22 +70,30 @@ def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
 
     extract_dir = os.path.join(tmpdir, f"{label}_unzipped")
     os.makedirs(extract_dir, exist_ok=True)
-    with zipfile.ZipFile(zip_tmp_path, "r") as zf:
-        zf.extractall(extract_dir)
 
+    # --- 文字化け対策：エンコーディングを判定して再作成 ---
+    with zipfile.ZipFile(zip_tmp_path, "r") as zf:
+        for info in zf.infolist():
+            name = info.filename
+            # CP437 → CP932（Windows日本語）→ UTF-8 に変換を試みる
+            try:
+                fixed_name = name.encode("cp437").decode("cp932")
+                info.filename = fixed_name
+            except Exception:
+                pass  # 変換できなければそのまま
+            zf.extract(info, extract_dir)
+
+    # --- 通常のルート推定処理 ---
     top_paths = [os.path.join(extract_dir, x) for x in os.listdir(extract_dir)]
     top_files = [p for p in top_paths if os.path.isfile(p)]
     top_dirs_all = [p for p in top_paths if os.path.isdir(p)]
 
-    # 1) 直下PDFがあるなら、そのまま extract_dir を返す
     top_pdfs = [p for p in top_files if p.lower().endswith(".pdf")]
     if top_pdfs:
         return extract_dir
 
-    # __MACOSX を除外
     top_dirs = [d for d in top_dirs_all if os.path.basename(d) != "__MACOSX"]
 
-    # 2) 直下PDFを含むサブディレクトリが一意ならそれを採用
     dirs_with_pdfs = []
     for d in top_dirs:
         files_in_d = [os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))]
@@ -100,11 +103,9 @@ def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     if len(dirs_with_pdfs) == 1:
         return dirs_with_pdfs[0]
 
-    # 3) __MACOSX 除外後にサブディレクトリが単一ならそれを採用
     if len(top_dirs) == 1:
         return top_dirs[0]
 
-    # 4) どうしても判別不能なら展開ルート
     return extract_dir
 
 # ====== タブ（3機能） ======
