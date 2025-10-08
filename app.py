@@ -60,9 +60,41 @@ def collect_top_level_pdfs(root_dir: str):
     return pdfs
 
 def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
+   import unicodedata
+
+def _fix_zip_name(name: str, flag_bits: int) -> str:
     """
-    ZIPを展開し、比較ルートを返す。
-    - Macで作成したZIPの日本語ファイル名文字化けを自動修正。
+    ZipInfo.filename を“正しい”文字列に補正する。
+    - UTF-8 フラグ(0x800)が立っていればそのまま NFC 正規化のみ
+    - 立っていなければ CP437 バイトに戻してから、候補エンコーディングで再デコード
+    """
+    # すでに UTF-8 の場合は正規化だけ
+    if flag_bits & 0x800:
+        return unicodedata.normalize("NFC", name)
+
+    # CP437 として bytes に戻す（zipfile の既定デコードに合わせる）
+    raw = name.encode("cp437", errors="ignore")
+
+    # 日本語/Mac の可能性を考慮して順に試す
+    for enc in ("cp932", "shift_jis", "mac_roman", "utf-8", "latin-1"):
+        try:
+            fixed = raw.decode(enc)
+            return unicodedata.normalize("NFC", fixed)
+        except Exception:
+            continue
+
+    # どうしてもダメなら元の文字列を正規化して返す
+    return unicodedata.normalize("NFC", name)
+
+
+def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
+    """
+    ZIPを展開し、比較ルートとなる“最も自然な”ディレクトリを返す。
+    改良点:
+      - Mac ZIP の日本語名文字化けを補正（CP437→cp932/mac_roman 等）
+      - __MACOSX / .DS_Store をスキップ
+      - ディレクトリ・トラバーサル対策
+      - 直下PDFなしでも「PDFを含むサブフォルダが単一ならそこ」を自動採用
     """
     zip_tmp_path = os.path.join(tmpdir, f"{label}.zip")
     with open(zip_tmp_path, "wb") as f:
@@ -71,29 +103,50 @@ def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     extract_dir = os.path.join(tmpdir, f"{label}_unzipped")
     os.makedirs(extract_dir, exist_ok=True)
 
-    # --- 文字化け対策：エンコーディングを判定して再作成 ---
+    def _is_safe_path(base: str, target: str) -> bool:
+        base = os.path.abspath(base)
+        target = os.path.abspath(target)
+        return os.path.commonprefix([base, target]) == base
+
+    # --- 展開（名前補正しながら自前で書き出す）---
     with zipfile.ZipFile(zip_tmp_path, "r") as zf:
         for info in zf.infolist():
-            name = info.filename
-            # CP437 → CP932（Windows日本語）→ UTF-8 に変換を試みる
-            try:
-                fixed_name = name.encode("cp437").decode("cp932")
-                info.filename = fixed_name
-            except Exception:
-                pass  # 変換できなければそのまま
-            zf.extract(info, extract_dir)
+            # __MACOSX は無視
+            if info.filename.startswith("__MACOSX/"):
+                continue
+            # 補正後のパスに差し替え
+            fixed_name = _fix_zip_name(info.filename, info.flag_bits)
+            # 隠しファイルはスキップ（.DS_Store など）
+            if os.path.basename(fixed_name) in (".DS_Store",):
+                continue
 
-    # --- 通常のルート推定処理 ---
+            dest_path = os.path.join(extract_dir, fixed_name)
+            if not _is_safe_path(extract_dir, dest_path):
+                # 変なパスは無視（セキュリティ）
+                continue
+
+            if fixed_name.endswith("/") or fixed_name.endswith("\\"):
+                os.makedirs(dest_path, exist_ok=True)
+                continue
+
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            with zf.open(info, "r") as src, open(dest_path, "wb") as dst:
+                dst.write(src.read())
+
+    # --- ここから“比較ルート”の自動決定 ---
     top_paths = [os.path.join(extract_dir, x) for x in os.listdir(extract_dir)]
     top_files = [p for p in top_paths if os.path.isfile(p)]
     top_dirs_all = [p for p in top_paths if os.path.isdir(p)]
 
+    # 1) 直下PDFがある → そのままルート採用
     top_pdfs = [p for p in top_files if p.lower().endswith(".pdf")]
     if top_pdfs:
         return extract_dir
 
+    # __MACOSX を除外
     top_dirs = [d for d in top_dirs_all if os.path.basename(d) != "__MACOSX"]
 
+    # 2) 直下にPDFを含むサブディレクトリがひとつだけ → それを採用
     dirs_with_pdfs = []
     for d in top_dirs:
         files_in_d = [os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))]
@@ -103,10 +156,13 @@ def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     if len(dirs_with_pdfs) == 1:
         return dirs_with_pdfs[0]
 
+    # 3) サブディレクトリ（__MACOSX除外）が単一ならそれを採用
     if len(top_dirs) == 1:
         return top_dirs[0]
 
+    # 4) それ以外は展開ルート
     return extract_dir
+
 
 # ====== タブ（3機能） ======
 tab_single, tab_folder, tab_multi = st.tabs([
