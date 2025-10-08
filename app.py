@@ -22,6 +22,10 @@ import streamlit.components.v1 as components
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
+# ===== UI Colors =====
+BEFORE_LABEL_COLOR = "#990099"
+AFTER_LABEL_COLOR  = "#008000"
+
 # ===== ページ設定 =====
 ICON_PATH = "gBmicon.png"
 icon_img = None
@@ -135,7 +139,7 @@ with tab_two:
 
     # ラベル色だけ変更。uploaderのラベルは隠す（CSSは使わない）
     with c1:
-        st.markdown('<div style="color:#382008; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
+       st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
         before_files = st.file_uploader(
             label="",
             type=["pdf"],
@@ -144,7 +148,7 @@ with tab_two:
             label_visibility="collapsed"
         )
     with c2:
-        st.markdown('<div style="color:#008000; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
         after_files = st.file_uploader(
             label="",
             type=["pdf"],
