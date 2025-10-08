@@ -61,31 +61,33 @@ def add_date_suffix(filename: str) -> str:
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
 def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
-    """PDFをページ内にそのまま表示（モーダル/ポップアップ不使用）"""
-    b64 = base64.b64encode(data_bytes).decode("utf-8")
-    # Blob URL を使って iframe に埋め込む（data:直埋めで白紙を回避）
-    html = f"""
+    """PDFをページ内にそのまま表示（モーダル/ポップアップなし）
+    - base64 を <object> に直埋め（最も互換性が高い）
+    - 表示できない環境のためのフォールバックリンク付き
+    """
+    import base64, html
+    b64 = base64.b64encode(data_bytes).decode("ascii")
+    safe_name = html.escape(name)
+
+    html_code = f"""
     <div style="border:1px solid #ddd; border-radius:8px; overflow:hidden;">
-      <script>
-        (function() {{
-          const b64 = "{b64}";
-          const bin = atob(b64);
-          const len = bin.length;
-          const bytes = new Uint8Array(len);
-          for (let i=0; i<len; i++) {{
-            bytes[i] = bin.charCodeAt(i);
-          }}
-          const blob = new Blob([bytes], {{type: "application/pdf"}});
-          const url = URL.createObjectURL(blob);
-          const iframe = document.getElementById("pdf_iframe_{hash(name)}");
-          iframe.src = url;
-        }})();
-      </script>
-      <iframe id="pdf_iframe_{hash(name)}" width="100%" height="{height}px"></iframe>
+      <div style="padding:8px 12px; font-weight:600;">👁 プレビュー：{safe_name}</div>
+      <object
+        data="data:application/pdf;base64,{b64}"
+        type="application/pdf"
+        width="100%"
+        height="{height}px">
+        <div style="padding:16px; font-size:14px;">
+          このブラウザでは PDF の埋め込み表示が無効になっている可能性があります。<br/>
+          <a download="{safe_name}"
+             href="data:application/pdf;base64,{b64}">
+             ここをクリックしてダウンロード</a> してください。
+        </div>
+      </object>
     </div>
     """
-    st.markdown(f"**👁 プレビュー表示：{name}**")
-    components.html(html, height=height+20, scrolling=False)
+    components.html(html_code, height=height+60, scrolling=False)
+
 
 # ===== セッション初期化 =====
 if "results_two" not in st.session_state:
