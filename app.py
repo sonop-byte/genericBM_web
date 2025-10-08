@@ -41,17 +41,63 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- サイドバー：比較モード選択 ---
-st.sidebar.header("🧩 比較モード")
-compare_mode = st.sidebar.selectbox(
-    "比較モードを選択してください",
-    ["single_pdf", "multiple_pdf", "zip_folder"],
-    format_func=lambda x: {
-        "single_pdf": "📄 単一PDF比較",
-        "multiple_pdf": "📚 複数PDF 1:1 比較",
-        "zip_folder": "🗂 フォルダZIP比較"
-    }[x]
-)
+# ====== 📚 複数PDF 1:1 比較機能 ======
+
+st.markdown("### 📚 複数PDF 1:1 比較")
+
+before_files = st.file_uploader("Before側PDF（複数可）", type="pdf", accept_multiple_files=True)
+after_files  = st.file_uploader("After側PDF（複数可）", type="pdf", accept_multiple_files=True)
+
+if before_files and after_files and len(before_files) == len(after_files):
+
+    if st.button("比較を開始"):
+        results = []
+
+        for b_file, a_file in zip(sorted(before_files, key=lambda f: f.name),
+                                  sorted(after_files, key=lambda f: f.name)):
+
+            diff_name = f"{b_file.name.replace('.pdf','')}-{a_file.name.replace('.pdf','')}_diff.pdf"
+            out_path = os.path.join(tempfile.gettempdir(), diff_name)
+
+            with st.spinner(f"🔍 {b_file.name} と {a_file.name} を比較中..."):
+                generate_diff(b_file, a_file, out_path)
+                results.append((diff_name, out_path))
+
+        # ====== ✅ 結果出力セクション ======
+        st.success(f"✅ 比較が完了しました（{len(results)}件）")
+
+        # --- 個別DLボタン ---
+        st.subheader("📄 個別ダウンロード")
+        for name, path in results:
+            with open(path, "rb") as f:
+                st.download_button(
+                    label=f"⬇️ {name}",
+                    data=f,
+                    file_name=name,
+                    mime="application/pdf"
+                )
+
+        # --- ZIP一括DLボタン ---
+        st.subheader("💾 ZIP一括ダウンロード")
+        zip_path = os.path.join(tempfile.gettempdir(), "genericBM_results.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for name, path in results:
+                zf.write(path, name)
+
+        with open(zip_path, "rb") as f:
+            st.download_button(
+                label="📥 すべてまとめてダウンロード（ZIP）",
+                data=f,
+                file_name="genericBM_results.zip",
+                mime="application/zip"
+            )
+
+        # ✅ 比較作業をここで止める（ループ防止）
+        st.stop()
+
+elif before_files or after_files:
+    st.warning("Before側とAfter側で同じ数のPDFをアップロードしてください。")
+
 
 # （以降はこれまでのタブ／処理ロジックをそのまま続ける…）
 # ---------- 共通設定 ----------
