@@ -7,7 +7,7 @@
 # ・出力名は「BeforevsAfter_YYYYMMDD.pdf」
 # ・実行フラグでワンショット実行（st.stop 未使用）
 # ・DPIスライダーは常時表示
-# ・2ファイル比較のラベル色: Before=#820082, After=#008000
+# ・2ファイル比較のラベル色: Before=#800080, After=#008000
 
 import os
 import io
