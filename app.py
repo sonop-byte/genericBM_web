@@ -1,16 +1,16 @@
-# app.py — genericBM Web（中央ロゴ・サイドバーなし・3機能統合）
+# app.py — genericBM Web（ZIPフォルダ比較なし・単一/複数のみ）
 import os
 import io
 import zipfile
-import unicodedata
 import tempfile
 from datetime import datetime
+import unicodedata
 
 import streamlit as st
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
-# ===== ページ設定（favicon はローカル画像を安全に読込） =====
+# ===== ページ設定（favicon はローカル画像があれば使用） =====
 ICON_PATH = "gBmicon.png"
 icon_img = None
 if os.path.exists(ICON_PATH):
@@ -36,7 +36,7 @@ st.markdown(
             genericBM – PDF差分比較ツール（Web版）
         </h1>
         <p style='color:gray; font-size:1.0em; margin-top:0; text-align:center;'>
-            修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。
+            修正前・修正後のPDFをアップロードして差分を作成します。
         </p>
     </div>
     """,
@@ -50,125 +50,13 @@ with st.expander("詳細設定", expanded=False):
 
 # ===== ユーティリティ =====
 def safe_base(path_or_name: str) -> str:
-    """拡張子除去したベース名（入力がパスでもファイル名にして処理）"""
-    return os.path.splitext(os.path.basename(path_or_name))[0]
-
-def collect_top_level_pdfs(root_dir: str):
-    """直下のみのPDFパスをファイル名順で返す"""
-    items = [f for f in os.listdir(root_dir) if os.path.isfile(os.path.join(root_dir, f))]
-    pdfs = [os.path.join(root_dir, f) for f in items if f.lower().endswith(".pdf")]
-    pdfs.sort(key=lambda p: os.path.basename(p).lower())
-    return pdfs
-
-def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
-   import unicodedata
-
-def _fix_zip_name(name: str, flag_bits: int) -> str:
-    """
-    ZipInfo.filename を“正しい”文字列に補正する。
-    - UTF-8 フラグ(0x800)が立っていればそのまま NFC 正規化のみ
-    - 立っていなければ CP437 バイトに戻してから、候補エンコーディングで再デコード
-    """
-    # すでに UTF-8 の場合は正規化だけ
-    if flag_bits & 0x800:
-        return unicodedata.normalize("NFC", name)
-
-    # CP437 として bytes に戻す（zipfile の既定デコードに合わせる）
-    raw = name.encode("cp437", errors="ignore")
-
-    # 日本語/Mac の可能性を考慮して順に試す
-    for enc in ("cp932", "shift_jis", "mac_roman", "utf-8", "latin-1"):
-        try:
-            fixed = raw.decode(enc)
-            return unicodedata.normalize("NFC", fixed)
-        except Exception:
-            continue
-
-    # どうしてもダメなら元の文字列を正規化して返す
+    """拡張子除去したベース名（入力がパスでもOK）をNFCに正規化して返す"""
+    name = os.path.splitext(os.path.basename(path_or_name))[0]
     return unicodedata.normalize("NFC", name)
 
-
-def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
-    """
-    ZIPを展開し、比較ルートとなる“最も自然な”ディレクトリを返す。
-    改良点:
-      - Mac ZIP の日本語名文字化けを補正（CP437→cp932/mac_roman 等）
-      - __MACOSX / .DS_Store をスキップ
-      - ディレクトリ・トラバーサル対策
-      - 直下PDFなしでも「PDFを含むサブフォルダが単一ならそこ」を自動採用
-    """
-    zip_tmp_path = os.path.join(tmpdir, f"{label}.zip")
-    with open(zip_tmp_path, "wb") as f:
-        f.write(uploaded_zip.read())
-
-    extract_dir = os.path.join(tmpdir, f"{label}_unzipped")
-    os.makedirs(extract_dir, exist_ok=True)
-
-    def _is_safe_path(base: str, target: str) -> bool:
-        base = os.path.abspath(base)
-        target = os.path.abspath(target)
-        return os.path.commonprefix([base, target]) == base
-
-    # --- 展開（名前補正しながら自前で書き出す）---
-    with zipfile.ZipFile(zip_tmp_path, "r") as zf:
-        for info in zf.infolist():
-            # __MACOSX は無視
-            if info.filename.startswith("__MACOSX/"):
-                continue
-            # 補正後のパスに差し替え
-            fixed_name = _fix_zip_name(info.filename, info.flag_bits)
-            # 隠しファイルはスキップ（.DS_Store など）
-            if os.path.basename(fixed_name) in (".DS_Store",):
-                continue
-
-            dest_path = os.path.join(extract_dir, fixed_name)
-            if not _is_safe_path(extract_dir, dest_path):
-                # 変なパスは無視（セキュリティ）
-                continue
-
-            if fixed_name.endswith("/") or fixed_name.endswith("\\"):
-                os.makedirs(dest_path, exist_ok=True)
-                continue
-
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            with zf.open(info, "r") as src, open(dest_path, "wb") as dst:
-                dst.write(src.read())
-
-    # --- ここから“比較ルート”の自動決定 ---
-    top_paths = [os.path.join(extract_dir, x) for x in os.listdir(extract_dir)]
-    top_files = [p for p in top_paths if os.path.isfile(p)]
-    top_dirs_all = [p for p in top_paths if os.path.isdir(p)]
-
-    # 1) 直下PDFがある → そのままルート採用
-    top_pdfs = [p for p in top_files if p.lower().endswith(".pdf")]
-    if top_pdfs:
-        return extract_dir
-
-    # __MACOSX を除外
-    top_dirs = [d for d in top_dirs_all if os.path.basename(d) != "__MACOSX"]
-
-    # 2) 直下にPDFを含むサブディレクトリがひとつだけ → それを採用
-    dirs_with_pdfs = []
-    for d in top_dirs:
-        files_in_d = [os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))]
-        pdfs_in_d = [p for p in files_in_d if p.lower().endswith(".pdf")]
-        if pdfs_in_d:
-            dirs_with_pdfs.append(d)
-    if len(dirs_with_pdfs) == 1:
-        return dirs_with_pdfs[0]
-
-    # 3) サブディレクトリ（__MACOSX除外）が単一ならそれを採用
-    if len(top_dirs) == 1:
-        return top_dirs[0]
-
-    # 4) それ以外は展開ルート
-    return extract_dir
-
-
-# ====== タブ（3機能） ======
-tab_single, tab_folder, tab_multi = st.tabs([
+# ====== タブ（2機能） ======
+tab_single, tab_multi = st.tabs([
     "📄 PDF 2枚比較",
-    "🗂 フォルダ比較（ZIP）",
     "📚 複数PDF 1:1 比較",
 ])
 
@@ -210,68 +98,7 @@ with tab_single:
                 st.error(f"エラーが発生しました：{e}")
         st.stop()  # 再実行防止
 
-# === タブ2：フォルダ比較（ZIP） ===
-with tab_folder:
-    c1, c2 = st.columns(2)
-    with c1:
-        before_zip = st.file_uploader("Before フォルダのZIP（直下PDFのみ比較）", type=["zip"], key="before_zip")
-    with c2:
-        after_zip  = st.file_uploader("After フォルダのZIP（直下PDFのみ比較）",  type=["zip"], key="after_zip")
-
-    st.caption("⚠️ フォルダはZIPにしてアップロードしてください。直下PDFのみ対象・ファイル名順に1:1で比較します。")
-
-    if before_zip and after_zip and st.button("比較を開始（ZIPフォルダ）", key="btn_zip"):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                before_root = extract_zip_to_root(tmpdir, before_zip, "before")
-                after_root  = extract_zip_to_root(tmpdir,  after_zip,  "after")
-
-                before_pdfs = collect_top_level_pdfs(before_root)
-                after_pdfs  = collect_top_level_pdfs(after_root)
-                if not before_pdfs:
-                    st.error("Before 側にPDFが見つかりませんでした（直下のみ対象）。"); st.stop()
-                if not after_pdfs:
-                    st.error("After 側にPDFが見つかりませんでした（直下のみ対象）。"); st.stop()
-
-                total = min(len(before_pdfs), len(after_pdfs))
-                if total == 0:
-                    st.error("比較できるペアがありません。"); st.stop()
-
-                out_mem = io.BytesIO()
-                with zipfile.ZipFile(out_mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    prog = st.progress(0)
-                    status = st.empty()
-                    for i in range(total):
-                        b = before_pdfs[i]; a = after_pdfs[i]
-                        bname = safe_base(b); aname = safe_base(a)
-                        out_name = f"{bname}-{aname}_diff.pdf"
-                        out_tmp  = os.path.join(tmpdir, out_name)
-
-                        status.write(f"🔄 生成中: {i+1}/{total} — {bname} vs {aname}")
-                        generate_diff(b, a, out_tmp, dpi=dpi)
-                        zf.write(out_tmp, arcname=out_name)
-                        prog.progress(int((i + 1) / total * 100))
-                status.write("✅ すべての比較が完了しました。")
-                prog.progress(100)
-
-                before_label = safe_base(before_zip.name)
-                after_label  = safe_base(after_zip.name)
-                date_tag = datetime.now().strftime("%Y%m%d")
-                zip_name = f"{before_label}-{after_label}_diff_{date_tag}.zip"
-
-                st.success(f"📦 {total}件の比較結果をZIPにまとめました。")
-                st.download_button(
-                    "📥 結果ZIPをダウンロード",
-                    data=out_mem.getvalue(),
-                    file_name=zip_name,
-                    mime="application/zip",
-                    key="dl_zip"
-                )
-            except Exception as e:
-                st.error(f"エラーが発生しました：{e}")
-        st.stop()  # 再実行防止
-
-# === タブ3：複数PDF 1:1 比較（ZIP＋個別DL両対応） ===
+# === タブ2：複数PDF 1:1 比較（個別DL＋ZIP一括DL） ===
 with tab_multi:
     c1, c2 = st.columns(2)
     with c1:
@@ -303,13 +130,13 @@ with tab_multi:
                     if total == 0:
                         st.error("比較できるペアがありません。"); st.stop()
 
-                    results = []  # (表示名, 出力パス) のタプル
+                    results = []  # (表示名, 出力パス)
                     prog = st.progress(0)
                     status = st.empty()
 
                     for i in range(total):
                         b = before_paths[i]; a = after_paths[i]
-                        # 表示用名（接頭辞 b_/a_ を剥がす）
+                        # 表示名（接頭辞 b_/a_ を剥がし、NFC正規化）
                         bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
                         adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
 
