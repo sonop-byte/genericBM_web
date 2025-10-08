@@ -107,6 +107,13 @@ def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     # 4) どうしても判別不能なら展開ルート
     return extract_dir
 
+# ====== タブ（3機能） ======
+tab_single, tab_folder, tab_multi = st.tabs([
+    "📄 PDF 2枚比較",
+    "🗂 フォルダ比較（ZIP）",
+    "📚 複数PDF 1:1 比較",
+])
+
 # === タブ1：単一PDF 2枚比較 ===
 with tab_single:
     c1, c2 = st.columns(2)
