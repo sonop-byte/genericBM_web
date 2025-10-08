@@ -61,33 +61,51 @@ def collect_top_level_pdfs(root_dir: str):
 
 def extract_zip_to_root(tmpdir: str, uploaded_zip, label: str):
     """
-    ZIPを展開し、比較ルートを返す。
-    - 直下にPDFがあればそのディレクトリ
-    - 直下に単一サブディレクトリのみ → そこ
-    - それ以外 → 展開ディレクトリ
+    ZIPを展開し、比較ルートとなる“最も自然な”ディレクトリを返す。
+    優先順:
+      1) 展開直下にPDFがあれば → その直下ディレクトリ
+      2) 展開直下のサブディレクトリ（__MACOSX を除外）のうち、
+         直下にPDFを含むものが1つだけなら → そのサブディレクトリ
+      3) 展開直下のサブディレクトリ（__MACOSX を除外）が1つだけなら → そのサブディレクトリ
+      4) それ以外 → 展開ディレクトリ（ルート）
     """
     zip_tmp_path = os.path.join(tmpdir, f"{label}.zip")
     with open(zip_tmp_path, "wb") as f:
         f.write(uploaded_zip.read())
+
     extract_dir = os.path.join(tmpdir, f"{label}_unzipped")
     os.makedirs(extract_dir, exist_ok=True)
     with zipfile.ZipFile(zip_tmp_path, "r") as zf:
         zf.extractall(extract_dir)
-    top = [os.path.join(extract_dir, x) for x in os.listdir(extract_dir)]
-    top_pdfs = [p for p in top if os.path.isfile(p) and p.lower().endswith(".pdf")]
+
+    top_paths = [os.path.join(extract_dir, x) for x in os.listdir(extract_dir)]
+    top_files = [p for p in top_paths if os.path.isfile(p)]
+    top_dirs_all = [p for p in top_paths if os.path.isdir(p)]
+
+    # 1) 直下PDFがあるなら、そのまま extract_dir を返す
+    top_pdfs = [p for p in top_files if p.lower().endswith(".pdf")]
     if top_pdfs:
         return extract_dir
-    top_dirs = [d for d in top if os.path.isdir(d)]
+
+    # __MACOSX を除外
+    top_dirs = [d for d in top_dirs_all if os.path.basename(d) != "__MACOSX"]
+
+    # 2) 直下PDFを含むサブディレクトリが一意ならそれを採用
+    dirs_with_pdfs = []
+    for d in top_dirs:
+        files_in_d = [os.path.join(d, f) for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))]
+        pdfs_in_d = [p for p in files_in_d if p.lower().endswith(".pdf")]
+        if pdfs_in_d:
+            dirs_with_pdfs.append(d)
+    if len(dirs_with_pdfs) == 1:
+        return dirs_with_pdfs[0]
+
+    # 3) __MACOSX 除外後にサブディレクトリが単一ならそれを採用
     if len(top_dirs) == 1:
         return top_dirs[0]
-    return extract_dir
 
-# ====== タブ（3機能） ======
-tab_single, tab_folder, tab_multi = st.tabs([
-    "📄 PDF 2枚比較",
-    "🗂 フォルダ比較（ZIP）",
-    "📚 複数PDF 1:1 比較",
-])
+    # 4) どうしても判別不能なら展開ルート
+    return extract_dir
 
 # === タブ1：単一PDF 2枚比較 ===
 with tab_single:
