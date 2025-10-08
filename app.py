@@ -177,12 +177,13 @@ with tab_two:
         # フラグを必ずOFFに
         st.session_state.run_two = False
 
-    # 生成済みPDF一覧（保持して表示）
-  if st.session_state.results_two:
-    st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示")  # ← 追加
-    for name, data in st.session_state.results_two:
-        ...
+      # === 2ファイル比較の結果表示 ===
+    if st.session_state.results_two:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示")  # ← ここを追加
+        for name, data in st.session_state.results_two:
+            st.markdown(f"**{name}**")
+            show_pdf_inline(name, data)
 
             c1, c2 = st.columns([0.8, 0.2])
             with c1:
