@@ -65,11 +65,16 @@ def add_date_suffix(filename: str) -> str:
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
 def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
-    """PDFの先頭数ページを画像化してプレビュー表示（モーダル/ポップアップなし）"""
+    """PDFの先頭数ページを画像化してプレビュー表示（オリジナルサイズ・モーダルなし）"""
     import fitz  # PyMuPDF
     from PIL import Image
     import io
 
+    # プレビュー設定
+    PREVIEW_MAX_PAGES = 3   # 表示するページ数
+    PREVIEW_DPI = 144       # 表示用のDPI
+
+    # PDFを開いてページを画像化
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
     imgs = []
@@ -78,25 +83,19 @@ def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
         zoom = PREVIEW_DPI / 72.0
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        # 画面幅に合わせて大きすぎるときは縮小
-        max_w = 1200
-        if img.width > max_w:
-            ratio = max_w / img.width
-            img = img.resize((max_w, int(img.height * ratio)))
         imgs.append(img)
     doc.close()
 
+    # 表示
     st.markdown(f"**👁 プレビュー：{name}**")
     if imgs:
-    st.image(
-        imgs,
-        caption=[f"Page {i+1}" for i in range(len(imgs))],
-        use_container_width=True  # ✅ こちらが新しい推奨パラメータ
+        st.image(
+            imgs,
+            caption=[f"Page {i+1}" for i in range(len(imgs))],
+            use_container_width=False  # ✅ オリジナルサイズで表示
         )
     else:
-    st.info("プレビューできるページがありません。")
-
-
+        st.info("プレビューできるページがありません。")
 
 # ===== セッション初期化 =====
 if "results_two" not in st.session_state:
