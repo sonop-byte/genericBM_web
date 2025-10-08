@@ -58,12 +58,15 @@ def add_date_suffix(filename: str) -> str:
     return f"{base}_{date_tag}{ext}"
 
 # ===== セッション初期化 =====
-if "results_two" not in st.session_state:
-    st.session_state.results_two = []
-if "results_three" not in st.session_state:
-    st.session_state.results_three = []
-if "preview_file" not in st.session_state:
-    st.session_state.preview_file = None
+for k in ["results_two", "results_three", "preview_file"]:
+    if k not in st.session_state:
+        st.session_state[k] = []
+
+# ✅ 比較実行フラグを追加
+if "run_two" not in st.session_state:
+    st.session_state.run_two = False
+if "run_three" not in st.session_state:
+    st.session_state.run_three = False
 
 # ===== タブ構成 =====
 tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3ファイル比較（1対2）"])
@@ -78,51 +81,17 @@ with tab_two:
     with c2:
         after_files  = st.file_uploader("After 側PDF（複数可）",  type=["pdf"], accept_multiple_files=True, key="after_two")
 
-    if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
-        st.session_state.results_two.clear()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                def save_all(files, prefix):
-                    paths = []
-                    for f in files:
-                        p = os.path.join(tmpdir, f"{prefix}_{f.name}")
-                        save_uploaded_to(p, f)
-                        paths.append(p)
-                    return sorted(paths, key=lambda x: os.path.basename(x).lower())
+ # ボタンでフラグON
+if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
+    st.session_state.run_two = True
 
-                b_paths = save_all(before_files, "b")
-                a_paths = save_all(after_files,  "a")
+# フラグがONのときだけ処理 → 処理後にOFF
+if st.session_state.run_two:
+    st.session_state.results_two.clear()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ...
+    st.session_state.run_two = False   # <- ここがポイント
 
-                total = min(len(b_paths), len(a_paths))
-                if total == 0:
-                    st.warning("比較対象がありません。"); st.stop()
-
-                prog = st.progress(0)
-                status = st.empty()
-
-                for i in range(total):
-                    b = b_paths[i]
-                    a = a_paths[i]
-                    bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
-                    adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
-                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
-                    out_tmp  = os.path.join(tmpdir, out_name)
-                    status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
-                    generate_diff(b, a, out_tmp, dpi=dpi)
-                    with open(out_tmp, "rb") as f:
-                        data = f.read()
-                    st.session_state.results_two.append((out_name, data))
-                    prog.progress(int((i+1)/total*100))
-
-                status.write("✅ 比較が完了しました。")
-                prog.progress(100)
-
-            except Exception as e:
-                st.error(f"エラー: {e}")
-        st.stop()
-
-    # 生成済みPDF一覧（保持）
-    if st.session_state.results_two:
         st.subheader("📄 生成済み差分PDF")
         for name, data in st.session_state.results_two:
             c1, c2 = st.columns([0.8, 0.2])
