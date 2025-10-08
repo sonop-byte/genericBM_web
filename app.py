@@ -2,6 +2,7 @@
 import os
 import io
 import zipfile
+import unicodedata
 import tempfile
 from datetime import datetime
 
