@@ -1,12 +1,4 @@
-# app.py — genericBM Web（フラグ付き・安全安定版）
-# 機能:
-# ・タブ2種：📄 2ファイル比較（1:1固定, 余剰は無視）／📚 3ファイル比較（Before1 vs After2）
-# ・結果は st.session_state に保持（次のアップロードまで残る）
-# ・個別DL + ZIP一括DL
-# ・ファイル名クリックでPDFプレビュー
-# ・出力名は「BeforevsAfter_YYYYMMDD.pdf」
-# ・実行フラグでワンショット実行（st.stop は未使用）
-
+# app.py — genericBM Web（プレビュー修正＋DPI常時表示・フラグ安定版）
 import os
 import io
 import zipfile
@@ -16,6 +8,7 @@ from datetime import datetime
 import unicodedata
 
 import streamlit as st
+from streamlit import components_v1 as components
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
@@ -48,10 +41,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ===== 共通設定 =====
-with st.expander("詳細設定", expanded=False):
-    dpi = st.slider("出力PDFの解像度（dpi）", 100, 400, 200, 50)
-    st.caption("数値が高いほど精細になりますが、生成時間と出力サイズが増えます。")
+# ===== 出力PDFの解像度（dpi） ← 常時表示 =====
+dpi = st.slider("出力PDFの解像度（dpi）", min_value=100, max_value=400, value=200, step=50,
+                help="数値が高いほど精細になりますが、生成時間と出力サイズが増えます。")
 
 # ===== ユーティリティ =====
 def safe_base(path_or_name: str) -> str:
@@ -67,6 +59,33 @@ def add_date_suffix(filename: str) -> str:
     """末尾に _YYYYMMDD を追加"""
     base, ext = os.path.splitext(filename)
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
+
+def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
+    """PDFをページ内にそのまま表示（モーダル/ポップアップ不使用）"""
+    b64 = base64.b64encode(data_bytes).decode("utf-8")
+    # Blob URL を使って iframe に埋め込む（data:直埋めで白紙を回避）
+    html = f"""
+    <div style="border:1px solid #ddd; border-radius:8px; overflow:hidden;">
+      <script>
+        (function() {{
+          const b64 = "{b64}";
+          const bin = atob(b64);
+          const len = bin.length;
+          const bytes = new Uint8Array(len);
+          for (let i=0; i<len; i++) {{
+            bytes[i] = bin.charCodeAt(i);
+          }}
+          const blob = new Blob([bytes], {{type: "application/pdf"}});
+          const url = URL.createObjectURL(blob);
+          const iframe = document.getElementById("pdf_iframe_{hash(name)}");
+          iframe.src = url;
+        }})();
+      </script>
+      <iframe id="pdf_iframe_{hash(name)}" width="100%" height="{height}px"></iframe>
+    </div>
+    """
+    st.markdown(f"**👁 プレビュー表示：{name}**")
+    components.html(html, height=height+20, scrolling=False)
 
 # ===== セッション初期化 =====
 if "results_two" not in st.session_state:
@@ -148,6 +167,7 @@ with tab_two:
         for name, data in st.session_state.results_two:
             c1, c2 = st.columns([0.8, 0.2])
             with c1:
+                # クリックでプレビュー（モーダル/ポップアップなし）
                 if st.button(f"👁 {name}", key=f"preview_two_{name}"):
                     st.session_state.preview_file = (name, data)
             with c2:
@@ -228,17 +248,12 @@ with tab_three:
         st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
 # ---------------------------------------------------------------
-# 👁 プレビュー表示（保持）
+# 👁 プレビュー表示（ページ内表示）
 # ---------------------------------------------------------------
 if st.session_state.preview_file:
     name, data = st.session_state.preview_file
     st.markdown("---")
-    st.subheader(f"👁 プレビュー表示：{name}")
-    b64_pdf = base64.b64encode(data).decode("utf-8")
-    st.markdown(
-        f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="600"></iframe>',
-        unsafe_allow_html=True
-    )
+    show_pdf_inline(name, data, height=700)
 
 # ===== フッター =====
 st.markdown("---")
