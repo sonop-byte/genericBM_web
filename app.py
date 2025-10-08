@@ -31,6 +31,12 @@ st.set_page_config(
     layout="centered",
 )
 
+# ページ最大幅を 1500px に
+st.markdown(
+    "<style>.block-container{max-width:1500px !important;}</style>",
+    unsafe_allow_html=True,
+)
+
 # ===== ヘッダー =====
 st.markdown(
     """
@@ -172,9 +178,12 @@ with tab_two:
         st.session_state.run_two = False
 
     # 生成済みPDF一覧（保持して表示）
-    if st.session_state.results_two:
-        st.subheader("📄 生成済み差分PDF")
-        for name, data in st.session_state.results_two:
+  if st.session_state.results_two:
+    st.subheader("📄 生成済み差分PDF")
+    st.caption("クリックでプレビュー表示")  # ← 追加
+    for name, data in st.session_state.results_two:
+        ...
+
             c1, c2 = st.columns([0.8, 0.2])
             with c1:
                 # クリックでプレビュー（モーダル/ポップアップなし）
