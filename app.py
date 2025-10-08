@@ -1,10 +1,20 @@
-# app.py — genericBM Web（ファイル保持＋プレビュー＋日付追加）
+# app.py — genericBM Web（フラグ付き・安全安定版）
+# 機能:
+# ・タブ2種：📄 2ファイル比較（1:1固定, 余剰は無視）／📚 3ファイル比較（Before1 vs After2）
+# ・結果は st.session_state に保持（次のアップロードまで残る）
+# ・個別DL + ZIP一括DL
+# ・ファイル名クリックでPDFプレビュー
+# ・出力名は「BeforevsAfter_YYYYMMDD.pdf」
+# ・実行フラグでワンショット実行（st.stop は未使用）
+
 import os
 import io
 import zipfile
 import tempfile
+import base64
 from datetime import datetime
 import unicodedata
+
 import streamlit as st
 from PIL import Image
 from pdf_diff_core_small import generate_diff
@@ -43,26 +53,30 @@ with st.expander("詳細設定", expanded=False):
     dpi = st.slider("出力PDFの解像度（dpi）", 100, 400, 200, 50)
     st.caption("数値が高いほど精細になりますが、生成時間と出力サイズが増えます。")
 
+# ===== ユーティリティ =====
 def safe_base(path_or_name: str) -> str:
+    """拡張子を除いたファイル名をNFCで返す"""
     name = os.path.splitext(os.path.basename(path_or_name))[0]
     return unicodedata.normalize("NFC", name)
 
-def save_uploaded_to(path: str, uploaded):
+def save_uploaded_to(path: str, uploaded) -> None:
     with open(path, "wb") as f:
         f.write(uploaded.read())
 
 def add_date_suffix(filename: str) -> str:
-    """ファイル名の末尾に_YYYYMMDDを追加"""
+    """末尾に _YYYYMMDD を追加"""
     base, ext = os.path.splitext(filename)
-    date_tag = datetime.now().strftime("%Y%m%d")
-    return f"{base}_{date_tag}{ext}"
+    return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
 # ===== セッション初期化 =====
-for k in ["results_two", "results_three", "preview_file"]:
-    if k not in st.session_state:
-        st.session_state[k] = []
+if "results_two" not in st.session_state:
+    st.session_state.results_two = []   # [(name:str, bytes)]
+if "results_three" not in st.session_state:
+    st.session_state.results_three = [] # [(name:str, bytes)]
+if "preview_file" not in st.session_state:
+    st.session_state.preview_file = None  # (name, bytes) or None
 
-# ✅ 比較実行フラグを追加
+# 実行フラグ（ワンショット実行用）
 if "run_two" not in st.session_state:
     st.session_state.run_two = False
 if "run_three" not in st.session_state:
@@ -72,7 +86,7 @@ if "run_three" not in st.session_state:
 tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3ファイル比較（1対2）"])
 
 # ---------------------------------------------------------------
-# 📄 タブ1：2ファイル比較（ファイル名順で1:1固定）
+# 📄 タブ1：2ファイル比較（ファイル名順で1:1固定・余剰は無視）
 # ---------------------------------------------------------------
 with tab_two:
     c1, c2 = st.columns(2)
@@ -81,17 +95,55 @@ with tab_two:
     with c2:
         after_files  = st.file_uploader("After 側PDF（複数可）",  type=["pdf"], accept_multiple_files=True, key="after_two")
 
- # ボタンでフラグON
-if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
-    st.session_state.run_two = True
+    # ボタン押下で実行フラグON
+    if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
+        st.session_state.run_two = True
 
-# フラグがONのときだけ処理 → 処理後にOFF
-if st.session_state.run_two:
-    st.session_state.results_two.clear()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        ...
-    st.session_state.run_two = False   # <- ここがポイント
+    # 実行フラグがTrueのときだけ処理
+    if st.session_state.run_two:
+        st.session_state.results_two.clear()  # 新しい比較開始でリセット
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                # 一時保存 & ファイル名順ソート
+                b_paths = []
+                for f in before_files:
+                    p = os.path.join(tmpdir, f"b_{f.name}")
+                    save_uploaded_to(p, f)
+                    b_paths.append(p)
+                a_paths = []
+                for f in after_files:
+                    p = os.path.join(tmpdir, f"a_{f.name}")
+                    save_uploaded_to(p, f)
+                    a_paths.append(p)
+                b_paths.sort(key=lambda p: os.path.basename(p).lower())
+                a_paths.sort(key=lambda p: os.path.basename(p).lower())
 
+                total = min(len(b_paths), len(a_paths))  # 余剰は無視
+                if total == 0:
+                    st.info("比較対象がありません。")
+                else:
+                    prog = st.progress(0)
+                    status = st.empty()
+                    for i in range(total):
+                        b = b_paths[i]
+                        a = a_paths[i]
+                        bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
+                        adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
+                        out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
+                        out_path = os.path.join(tmpdir, out_name)
+                        status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
+                        generate_diff(b, a, out_path, dpi=dpi)
+                        with open(out_path, "rb") as fr:
+                            st.session_state.results_two.append((out_name, fr.read()))
+                        prog.progress(int((i+1)/total*100))
+                    status.write("✅ 比較が完了しました。")
+            except Exception as e:
+                st.error(f"エラー: {e}")
+        # フラグを必ずOFFに
+        st.session_state.run_two = False
+
+    # 生成済みPDF一覧（保持して表示）
+    if st.session_state.results_two:
         st.subheader("📄 生成済み差分PDF")
         for name, data in st.session_state.results_two:
             c1, c2 = st.columns([0.8, 0.2])
@@ -117,8 +169,13 @@ with tab_three:
     before_file = st.file_uploader("Before 側PDF（1つ）", type=["pdf"], key="before_three")
     after_files = st.file_uploader("After 側PDF（2つ）", type=["pdf"], accept_multiple_files=True, key="after_three")
 
+    # ボタン押下で実行フラグON
     if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
-        st.session_state.results_three.clear()
+        st.session_state.run_three = True
+
+    # 実行フラグがTrueのときだけ処理
+    if st.session_state.run_three:
+        st.session_state.results_three.clear()  # 新しい比較開始でリセット
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
                 before_path = os.path.join(tmpdir, "before.pdf")
@@ -128,27 +185,29 @@ with tab_three:
                 prog = st.progress(0)
                 status = st.empty()
 
+                total = 2  # Afterは2つ想定
                 for i, a_file in enumerate(after_files, start=1):
                     a_path = os.path.join(tmpdir, f"after_{i}.pdf")
                     save_uploaded_to(a_path, a_file)
                     adisp = safe_base(a_file.name)
+
                     out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
                     out_tmp  = os.path.join(tmpdir, out_name)
-                    status.write(f"🔄 生成中: {i}/2 — {bdisp} vs {adisp}")
+
+                    status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
                     generate_diff(before_path, a_path, out_tmp, dpi=dpi)
-                    with open(out_tmp, "rb") as f:
-                        data = f.read()
-                    st.session_state.results_three.append((out_name, data))
-                    prog.progress(int(i/2*100))
+
+                    with open(out_tmp, "rb") as fr:
+                        st.session_state.results_three.append((out_name, fr.read()))
+                    prog.progress(int(i/total*100))
 
                 status.write("✅ 比較が完了しました。")
-                prog.progress(100)
-
             except Exception as e:
                 st.error(f"エラー: {e}")
-        st.stop()
+        # フラグを必ずOFFに
+        st.session_state.run_three = False
 
-    # 生成済みPDF一覧（保持）
+    # 生成済みPDF一覧（保持して表示）
     if st.session_state.results_three:
         st.subheader("📄 生成済み差分PDF")
         for name, data in st.session_state.results_three:
@@ -169,16 +228,16 @@ with tab_three:
         st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
 # ---------------------------------------------------------------
-# 👁 プレビュー表示
+# 👁 プレビュー表示（保持）
 # ---------------------------------------------------------------
 if st.session_state.preview_file:
     name, data = st.session_state.preview_file
     st.markdown("---")
     st.subheader(f"👁 プレビュー表示：{name}")
-    st.download_button("⬇️ このファイルをダウンロード", data=data, file_name=name, mime="application/pdf", key="preview_dl")
+    b64_pdf = base64.b64encode(data).decode("utf-8")
     st.markdown(
-        f'<iframe src="data:application/pdf;base64,{data.decode("latin1")}" width="100%" height="600px"></iframe>',
-        unsafe_allow_html=True,
+        f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="600"></iframe>',
+        unsafe_allow_html=True
     )
 
 # ===== フッター =====
