@@ -12,6 +12,10 @@ import streamlit.components.v1 as components
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
+# プレビュー設定（必要に応じて調整）
+PREVIEW_MAX_PAGES = 3   # 先頭から何ページ表示するか
+PREVIEW_DPI = 144       # プレビュー画像の解像度（表示専用）
+
 # ===== ページ設定 =====
 ICON_PATH = "gBmicon.png"
 icon_img = None
@@ -61,32 +65,32 @@ def add_date_suffix(filename: str) -> str:
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
 def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
-    """PDFをページ内にそのまま表示（モーダル/ポップアップなし）
-    - base64 を <object> に直埋め（最も互換性が高い）
-    - 表示できない環境のためのフォールバックリンク付き
-    """
-    import base64, html
-    b64 = base64.b64encode(data_bytes).decode("ascii")
-    safe_name = html.escape(name)
+    """PDFの先頭数ページを画像化してプレビュー表示（モーダル/ポップアップなし）"""
+    import fitz  # PyMuPDF
+    from PIL import Image
+    import io
 
-    html_code = f"""
-    <div style="border:1px solid #ddd; border-radius:8px; overflow:hidden;">
-      <div style="padding:8px 12px; font-weight:600;">👁 プレビュー：{safe_name}</div>
-      <object
-        data="data:application/pdf;base64,{b64}"
-        type="application/pdf"
-        width="100%"
-        height="{height}px">
-        <div style="padding:16px; font-size:14px;">
-          このブラウザでは PDF の埋め込み表示が無効になっている可能性があります。<br/>
-          <a download="{safe_name}"
-             href="data:application/pdf;base64,{b64}">
-             ここをクリックしてダウンロード</a> してください。
-        </div>
-      </object>
-    </div>
-    """
-    components.html(html_code, height=height+60, scrolling=False)
+    doc = fitz.open(stream=data_bytes, filetype="pdf")
+    n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
+    imgs = []
+    for i in range(n_pages):
+        page = doc.load_page(i)
+        zoom = PREVIEW_DPI / 72.0
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        # 画面幅に合わせて大きすぎるときは縮小
+        max_w = 1200
+        if img.width > max_w:
+            ratio = max_w / img.width
+            img = img.resize((max_w, int(img.height * ratio)))
+        imgs.append(img)
+    doc.close()
+
+    st.markdown(f"**👁 プレビュー：{name}**")
+    if imgs:
+        st.image(imgs, caption=[f"Page {i+1}" for i in range(len(imgs))], use_column_width=True)
+    else:
+        st.info("プレビューできるページがありません。")
 
 
 # ===== セッション初期化 =====
