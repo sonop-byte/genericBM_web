@@ -41,6 +41,18 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# --- サイドバー：比較モード選択 ---
+st.sidebar.header("🧩 比較モード")
+compare_mode = st.sidebar.selectbox(
+    "比較モードを選択してください",
+    ["single_pdf", "multiple_pdf", "zip_folder"],
+    format_func=lambda x: {
+        "single_pdf": "📄 単一PDF比較",
+        "multiple_pdf": "📚 複数PDF 1:1 比較",
+        "zip_folder": "🗂 フォルダZIP比較"
+    }[x]
+)
+
 # （以降はこれまでのタブ／処理ロジックをそのまま続ける…）
 # ---------- 共通設定 ----------
 with st.expander("詳細設定", expanded=False):
