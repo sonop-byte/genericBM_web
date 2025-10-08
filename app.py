@@ -140,6 +140,12 @@ with tab_two:
     # ラベル色だけ変更。uploaderのラベルは隠す（CSSは使わない）
     with c1:
        st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
+with tab_two:
+    c1, c2 = st.columns(2)
+
+    # ラベル色だけ変更。uploaderのラベルは隠す（CSSは使わない）
+    with c1:
+        st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
         before_files = st.file_uploader(
             label="",
             type=["pdf"],
@@ -147,6 +153,7 @@ with tab_two:
             key="before_two",
             label_visibility="collapsed"
         )
+
     with c2:
         st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
         after_files = st.file_uploader(
