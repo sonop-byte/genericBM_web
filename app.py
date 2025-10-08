@@ -1,4 +1,14 @@
-# app.py — genericBM Web（プレビュー修正＋DPI常時表示・フラグ安定版）
+# app.py — genericBM Web（クリック時プレビュー／プレビュー領域1500px／注記＆ラベル色）
+# 機能:
+# ・タブ2種：📄 2ファイル比較（1:1固定, 余剰は無視）／📚 3ファイル比較（Before1 vs After2）
+# ・結果は st.session_state に保持（次のアップロードまで残る）
+# ・個別DL + ZIP一括DL
+# ・ファイル名クリックで下部にプレビュー（画像化、幅1500pxコンテナ）
+# ・出力名は「BeforevsAfter_YYYYMMDD.pdf」
+# ・実行フラグでワンショット実行（st.stop 未使用）
+# ・DPIスライダーは常時表示
+# ・2ファイル比較のラベル色: Before=#820082, After=#008000
+
 import os
 import io
 import zipfile
@@ -12,10 +22,6 @@ import streamlit.components.v1 as components
 from PIL import Image
 from pdf_diff_core_small import generate_diff
 
-# プレビュー設定（必要に応じて調整）
-PREVIEW_MAX_PAGES = 3   # 先頭から何ページ表示するか
-PREVIEW_DPI = 144       # プレビュー画像の解像度（表示専用）
-
 # ===== ページ設定 =====
 ICON_PATH = "gBmicon.png"
 icon_img = None
@@ -28,13 +34,7 @@ if os.path.exists(ICON_PATH):
 st.set_page_config(
     page_title="genericBM – PDF差分比較ツール",
     page_icon=icon_img if icon_img else "🩺",
-    layout="centered",
-)
-
-# ページ最大幅を 1500px に
-st.markdown(
-    "<style>.block-container{max-width:1500px !important;}</style>",
-    unsafe_allow_html=True,
+    layout="centered",   # 全体幅は従来どおり
 )
 
 # ===== ヘッダー =====
@@ -52,8 +52,11 @@ st.markdown(
 )
 
 # ===== 出力PDFの解像度（dpi） ← 常時表示 =====
-dpi = st.slider("出力PDFの解像度（dpi）", min_value=100, max_value=400, value=200, step=50,
-                help="数値が高いほど精細になりますが、生成時間と出力サイズが増えます。")
+dpi = st.slider(
+    "出力PDFの解像度（dpi）",
+    min_value=100, max_value=400, value=200, step=50,
+    help="数値が高いほど精細になりますが、生成時間と出力サイズが増えます。"
+)
 
 # ===== ユーティリティ =====
 def safe_base(path_or_name: str) -> str:
@@ -70,38 +73,42 @@ def add_date_suffix(filename: str) -> str:
     base, ext = os.path.splitext(filename)
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
-def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
-    """PDFの先頭数ページを画像化してプレビュー表示（オリジナルサイズ・モーダルなし）"""
+def show_pdf_inline(name: str, data_bytes: bytes):
+    """PDFの先頭数ページを画像化してプレビュー表示（1500px幅の専用コンテナ・原寸基準）"""
     import fitz  # PyMuPDF
-    from PIL import Image
-    import io
+    from PIL import Image as PILImage
 
-    # プレビュー設定
-    PREVIEW_MAX_PAGES = 3   # 表示するページ数
-    PREVIEW_DPI = 144       # 表示用のDPI
+    PREVIEW_MAX_PAGES = 3
+    PREVIEW_DPI = 144
 
-    # PDFを開いてページを画像化
+    # PDF→PNG に変換（先頭数ページ）
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
-    imgs = []
+    img_tags = []
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        imgs.append(img)
+        img = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        # max-width:100% → 原寸を超える拡大はしない（1500px枠に収まる）
+        img_tags.append(
+            f"<img src='data:image/png;base64,{b64}' "
+            f"style='display:block;margin:12px auto;max-width:100%;height:auto;'/>"
+        )
     doc.close()
 
-    # 表示
-    st.markdown(f"**👁 プレビュー：{name}**")
-    if imgs:
-        st.image(
-            imgs,
-            caption=[f"Page {i+1}" for i in range(len(imgs))],
-            use_container_width=False  # ✅ オリジナルサイズで表示
-        )
-    else:
-        st.info("プレビューできるページがありません。")
+    html = f"""
+    <div style="max-width:1500px;margin:0 auto;border:1px solid #ddd;border-radius:8px;padding:8px 12px;">
+      <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
+      {''.join(img_tags) if img_tags else '<div style="padding:10px;">プレビューできるページがありません。</div>'}
+    </div>
+    """
+    # 高さはページ数から目安で計算（スクロール可）
+    est_height = min(1200, 260 * max(1, n_pages) + 80)
+    components.html(html, height=est_height, scrolling=True)
 
 # ===== セッション初期化 =====
 if "results_two" not in st.session_state:
@@ -125,10 +132,26 @@ tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3
 # ---------------------------------------------------------------
 with tab_two:
     c1, c2 = st.columns(2)
+
+    # ラベル色だけ変更。uploaderのラベルは隠す（CSSは使わない）
     with c1:
-        before_files = st.file_uploader("Before 側PDF（複数可）", type=["pdf"], accept_multiple_files=True, key="before_two")
+        st.markdown('<div style="color:#382008; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
+        before_files = st.file_uploader(
+            label="",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="before_two",
+            label_visibility="collapsed"
+        )
     with c2:
-        after_files  = st.file_uploader("After 側PDF（複数可）",  type=["pdf"], accept_multiple_files=True, key="after_two")
+        st.markdown('<div style="color:#008000; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
+        after_files = st.file_uploader(
+            label="",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="after_two",
+            label_visibility="collapsed"
+        )
 
     # ボタン押下で実行フラグON
     if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
@@ -177,19 +200,15 @@ with tab_two:
         # フラグを必ずOFFに
         st.session_state.run_two = False
 
-      # === 2ファイル比較の結果表示 ===
+    # 生成済みPDF一覧（保持して表示）
     if st.session_state.results_two:
         st.subheader("📄 生成済み差分PDF")
-        st.caption("クリックでプレビュー表示")  # ← ここを追加
+        st.caption("クリックでプレビュー表示")
         for name, data in st.session_state.results_two:
-            st.markdown(f"**{name}**")
-            show_pdf_inline(name, data)
-
             c1, c2 = st.columns([0.8, 0.2])
             with c1:
-                # クリックでプレビュー（モーダル/ポップアップなし）
                 if st.button(f"👁 {name}", key=f"preview_two_{name}"):
-                    st.session_state.preview_file = (name, data)
+                    st.session_state.preview_file = (name, data)  # ← クリック時だけセット
             with c2:
                 st.download_button("⬇️ DL", data=data, file_name=name, mime="application/pdf", key=f"dl_two_{name}")
 
@@ -250,6 +269,7 @@ with tab_three:
     # 生成済みPDF一覧（保持して表示）
     if st.session_state.results_three:
         st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示")
         for name, data in st.session_state.results_three:
             c1, c2 = st.columns([0.8, 0.2])
             with c1:
@@ -268,12 +288,12 @@ with tab_three:
         st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
 # ---------------------------------------------------------------
-# 👁 プレビュー表示（ページ内表示）
+# 👁 プレビュー表示（クリック時のみ、ページ下部に表示）
 # ---------------------------------------------------------------
 if st.session_state.preview_file:
     name, data = st.session_state.preview_file
     st.markdown("---")
-    show_pdf_inline(name, data, height=700)
+    show_pdf_inline(name, data)
 
 # ===== フッター =====
 st.markdown("---")
