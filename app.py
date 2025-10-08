@@ -96,62 +96,61 @@ tab_single, tab_folder, tab_multi = st.tabs([
 ])
 
 # ====== 📚 複数PDF 1:1 比較機能 ======
-if compare_mode == "multiple_pdf":
 
-    before_files = st.file_uploader("Before側PDF（複数可）", type="pdf", accept_multiple_files=True)
-    after_files  = st.file_uploader("After側PDF（複数可）", type="pdf", accept_multiple_files=True)
+st.markdown("### 📚 複数PDF 1:1 比較")
 
-    if before_files and after_files and len(before_files) == len(after_files):
+before_files = st.file_uploader("Before側PDF（複数可）", type="pdf", accept_multiple_files=True)
+after_files  = st.file_uploader("After側PDF（複数可）", type="pdf", accept_multiple_files=True)
 
-        if st.button("比較を開始"):
-            results = []
+if before_files and after_files and len(before_files) == len(after_files):
 
-            for b_file, a_file in zip(sorted(before_files, key=lambda f: f.name),
-                                      sorted(after_files, key=lambda f: f.name)):
+    if st.button("比較を開始"):
+        results = []
 
-                diff_name = f"{b_file.name.replace('.pdf','')}-{a_file.name.replace('.pdf','')}_diff.pdf"
-                out_path = os.path.join(tempfile.gettempdir(), diff_name)
+        for b_file, a_file in zip(sorted(before_files, key=lambda f: f.name),
+                                  sorted(after_files, key=lambda f: f.name)):
 
-                with st.spinner(f"🔍 {b_file.name} と {a_file.name} を比較中..."):
-                    # 差分生成関数（既存のgenerate_diff）を呼ぶ
-                    generate_diff(b_file, a_file, out_path)
-                    results.append((diff_name, out_path))
+            diff_name = f"{b_file.name.replace('.pdf','')}-{a_file.name.replace('.pdf','')}_diff.pdf"
+            out_path = os.path.join(tempfile.gettempdir(), diff_name)
 
-            # ====== ✅ 結果出力セクション ======
-            st.success(f"✅ 比較が完了しました（{len(results)}件）")
+            with st.spinner(f"🔍 {b_file.name} と {a_file.name} を比較中..."):
+                generate_diff(b_file, a_file, out_path)
+                results.append((diff_name, out_path))
 
-            # --- ZIPにまとめて出力 ---
-            zip_path = os.path.join(tempfile.gettempdir(), "genericBM_results.zip")
-            with zipfile.ZipFile(zip_path, "w") as zf:
-                for name, path in results:
-                    zf.write(path, name)
+        # ====== ✅ 結果出力セクション ======
+        st.success(f"✅ 比較が完了しました（{len(results)}件）")
 
-            # --- 個別DLボタン ---
-            st.subheader("📄 個別ダウンロード")
-            for name, path in results:
-                with open(path, "rb") as f:
-                    st.download_button(
-                        label=f"⬇️ {name}",
-                        data=f,
-                        file_name=name,
-                        mime="application/pdf"
-                    )
-
-            # --- ZIP一括DLボタン ---
-            st.subheader("💾 ZIP一括ダウンロード")
-            with open(zip_path, "rb") as f:
+        # --- 個別DLボタン ---
+        st.subheader("📄 個別ダウンロード")
+        for name, path in results:
+            with open(path, "rb") as f:
                 st.download_button(
-                    label="📥 すべてまとめてダウンロード（ZIP）",
+                    label=f"⬇️ {name}",
                     data=f,
-                    file_name="genericBM_results.zip",
-                    mime="application/zip"
+                    file_name=name,
+                    mime="application/pdf"
                 )
 
-            # ✅ 比較作業をここで止める（ループ防止）
-            st.stop()
+        # --- ZIP一括DLボタン ---
+        st.subheader("💾 ZIP一括ダウンロード")
+        zip_path = os.path.join(tempfile.gettempdir(), "genericBM_results.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for name, path in results:
+                zf.write(path, name)
 
-    elif before_files or after_files:
-        st.warning("Before側とAfter側で同じ数のPDFをアップロードしてください。")
+        with open(zip_path, "rb") as f:
+            st.download_button(
+                label="📥 すべてまとめてダウンロード（ZIP）",
+                data=f,
+                file_name="genericBM_results.zip",
+                mime="application/zip"
+            )
+
+        # ✅ 比較作業をここで止める（ループ防止）
+        st.stop()
+
+elif before_files or after_files:
+    st.warning("Before側とAfter側で同じ数のPDFをアップロードしてください。")
 
 # ---------- フッター ----------
 st.markdown("---")
