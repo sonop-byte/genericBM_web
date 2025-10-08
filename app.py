@@ -88,9 +88,14 @@ def show_pdf_inline(name: str, data_bytes: bytes, height: int = 700):
 
     st.markdown(f"**👁 プレビュー：{name}**")
     if imgs:
-        st.image(imgs, caption=[f"Page {i+1}" for i in range(len(imgs))], use_column_width=True)
+    st.image(
+        imgs,
+        caption=[f"Page {i+1}" for i in range(len(imgs))],
+        use_container_width=True  # ✅ こちらが新しい推奨パラメータ
+        )
     else:
-        st.info("プレビューできるページがありません。")
+    st.info("プレビューできるページがありません。")
+
 
 
 # ===== セッション初期化 =====
