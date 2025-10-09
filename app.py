@@ -44,7 +44,6 @@ import time
 if "app_started" not in st.session_state:
     with st.spinner('アプリを起動しています… ⏳'):
         time.sleep(1.5)  # 起動演出（1.5秒）
-    st.success('起動が完了しました 🎉')
     st.session_state.app_started = True  # ✅ 2回目以降はスピナー非表示
     st.markdown("---")
 
