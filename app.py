@@ -157,15 +157,17 @@ with tab_two:
     c1, c2 = st.columns(2)
 
     # ラベル色だけ変更。uploaderのラベルは隠す（CSSは使わない）
-    with c1:
-        st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
-        before_files = st.file_uploader(
-            label="",
-            type=["pdf"],
-            accept_multiple_files=True,
-            key="before_two",
-            label_visibility="collapsed"
-        )
+with c1:
+    # ← この1行だけが見出し。重複している古い st.markdown は削除してください
+    st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
+
+    before_files = st.file_uploader(
+        label="",                     # 既定ラベルは消す
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="before_two",
+        label_visibility="collapsed"  # ← ラベル非表示（重複防止）
+    )
 
     with c2:
         st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
