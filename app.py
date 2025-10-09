@@ -34,6 +34,19 @@ if os.path.exists(ICON_PATH):
         icon_img = Image.open(ICON_PATH)
     except Exception:
         icon_img = None
+        
+import streamlit as st
+import time
+
+# ==============================================
+# 🚀 起動スピナー：初回アクセス時のみ表示
+# ==============================================
+if "app_started" not in st.session_state:
+    with st.spinner('アプリを起動しています… ⏳'):
+        time.sleep(2.5)  # 起動演出（2.5秒）
+    st.success('起動が完了しました 🎉')
+    st.session_state.app_started = True  # ✅ 2回目以降はスピナー非表示
+    st.markdown("---")
 
 st.set_page_config(
     page_title="genericBM – PDF差分比較ツール",
