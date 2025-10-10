@@ -156,6 +156,8 @@ if "results_three" not in st.session_state:
     st.session_state.results_three = []
 if "preview_file" not in st.session_state:
     st.session_state.preview_file = None
+if "preview_files_three" not in st.session_state:
+    st.session_state.preview_files_three = []
 if "run_two" not in st.session_state:
     st.session_state.run_two = False
 if "run_three" not in st.session_state:
@@ -313,20 +315,24 @@ with tab_three:
         st.session_state.run_three = False
 
     if st.session_state.results_three:
-        st.subheader("📄 生成済み差分PDF")
-        st.caption("クリックでプレビュー表示")
-        for name, data in st.session_state.results_three:
-            c1, c2 = st.columns([0.8, 0.2])
-            with c1:
-                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
-                    st.session_state.preview_file = (name, data)
-            with c2:
-                st.download_button(
-                    "⬇️ DL", data=data, file_name=name,
-                    mime="application/pdf", key=f"dl_three_{name}"
-                )
+    st.subheader("📄 生成済み差分PDF")
+    st.caption("クリックでプレビュー表示（複数可）")  # ← 文言だけお好みで
+    for name, data in st.session_state.results_three:
+        c1, c2 = st.columns([0.8, 0.2])
+        with c1:
+            # ★ クリックしても上書きせず“追加”する
+            if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+                if not any(n == name for n, _ in st.session_state.preview_files_three):
+                    st.session_state.preview_files_three.append((name, data))
+        with c2:
+            st.download_button(
+                "⬇️ DL", data=data, file_name=name,
+                mime="application/pdf", key=f"dl_three_{name}"
+            )
 
-        st.subheader("💾 ZIP一括ダウンロード")
+    st.subheader("💾 ZIP一括ダウンロード")
+    # …（ZIP生成は既存のまま）
+
         out_mem = io.BytesIO()
         with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
             for name, data in st.session_state.results_three:
@@ -336,6 +342,12 @@ with tab_three:
             "📥 ZIP一括DL", out_mem.getvalue(),
             file_name=zip_name, mime="application/zip"
         )
+
+    # ▼ 追加された複数プレビューを順に表示
+    if st.session_state.preview_files_three:
+        st.markdown("---")
+        for name, data in st.session_state.preview_files_three:
+            show_pdf_inline(name, data)
 
 # ====== 下部プレビュー（共通） ======
 if st.session_state.preview_file:
