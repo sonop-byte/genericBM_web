@@ -174,17 +174,15 @@ tab_two, tab_three = st.tabs(["📄 2ファイル比較（1対1）", "📚 3フ�
 if st.session_state.results_two:
     st.subheader("📄 生成済み差分PDF")
     st.caption("クリックでプレビュー表示（複数可）")
+
     for name, data in st.session_state.results_two:
         c1, c2 = st.columns([0.8, 0.2])
-with c1:
-    if st.button(f"👁 {name}", key=f"preview_two_{name}"):
-        if not any(n == name for n, _ in st.session_state.preview_files_two):
-            st.session_state.preview_files_two.append((name, data))
-    # 個別削除
-    if st.button("❌ 閉じる", key=f"close_two_{name}"):
-        st.session_state.preview_files_two = [
-            (n, d) for n, d in st.session_state.preview_files_two if n != name
-        ]
+
+        with c1:
+            # 追加表示：既に同名がなければ追加
+            if st.button(f"👁 {name}", key=f"preview_two_{name}"):
+                if not any(n == name for n, _ in st.session_state.preview_files_two):
+                    st.session_state.preview_files_two.append((name, data))
 
         with c2:
             st.download_button(
@@ -208,6 +206,7 @@ with c1:
         st.markdown("---")
         for name, data in st.session_state.preview_files_two:
             show_pdf_inline(name, data)
+
 
 # -------------------------------
 # 📚 3ファイル比較（1対2）
