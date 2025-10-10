@@ -156,6 +156,8 @@ if "results_three" not in st.session_state:
     st.session_state.results_three = []
 if "preview_file" not in st.session_state:
     st.session_state.preview_file = None
+if "preview_files_two" not in st.session_state:
+    st.session_state.preview_files_two = []
 if "preview_files_three" not in st.session_state:
     st.session_state.preview_files_three = []
 if "run_two" not in st.session_state:
