@@ -63,34 +63,65 @@ def show_pdf_inline(name: str, data_bytes: bytes):
     import fitz
     from PIL import Image as PILImage
     PREVIEW_MAX_PAGES = 3
-    PREVIEW_DPI = 144
+    PREVIEW_DPI = 144  # ←このDPIでの実寸ピクセル幅に合わせてコンテナ幅を可変にします
 
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
-    img_tags = []
+
+    # 各ページのPNGと寸法を取得
+    page_infos = []  # [(w, h, b64), ...]
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         img = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        img_tags.append(
-            f"<img src='data:image/png;base64,{b64}' "
-            f"style='display:block;margin:12px auto;max-width:100%;height:auto;'/>"
-        )
+        page_infos.append((img.width, img.height, b64))
     doc.close()
 
+    # コンテナ幅＝1ページ目の幅（プレビューDPIでのピクセル幅）
+    # ただし画面が狭い場合ははみ出さないよう max-width を効かせる
+    container_w = page_infos[0][0] if page_infos else 800  # デフォルト800px
+
+    # 実際に表示する高さを見積もり（各画像をコンテナ幅にフィットさせる前提）
+    est_height = 60  # タイトルや余白ぶん
+    for (w, h, _) in page_infos:
+        scale = container_w / max(1, w)
+        est_height += int(h * scale) + 16  # 画像間マージン
+
+    # 画面埋め尽くし防止の上限（必要なら調整可）
+    est_height = min(est_height, 2000)
+
+    # HTML組み立て（画像はコンテナ幅にフィット）
+    if page_infos:
+        img_tags = []
+        for (_, _, b64) in page_infos:
+            img_tags.append(
+                f"<img src='data:image/png;base64,{b64}' "
+                f"style='display:block;margin:12px auto;width:100%;height:auto;'/>"
+            )
+        imgs_html = "".join(img_tags)
+    else:
+        imgs_html = '<div style="padding:10px;">プレビューできるページがありません。</div>'
+
     html = f"""
-    <div style="max-width:1500px;margin:0 auto;border:1px solid #ddd;border-radius:8px;padding:8px 12px;">
-     <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
-     {''.join(img_tags) if img_tags else '<div style="padding:10px;">プレビューできるページがありません。</div>'}
+    <div style="
+        width:{container_w}px;
+        max-width:95vw;
+        margin:0 auto;
+        border:1px solid #ddd;
+        border-radius:8px;
+        padding:8px 12px;
+        box-sizing:border-box;">
+      <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
+      {imgs_html}
     </div>
     """
 
-
-    est_height = min(1200, 260 * max(1, n_pages) + 80)
+    import streamlit.components.v1 as components
     components.html(html, height=est_height, scrolling=True)
 
 if "results_two" not in st.session_state:
