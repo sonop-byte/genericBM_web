@@ -102,7 +102,7 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             """,
             unsafe_allow_html=True
         )
-        def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
+def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
     """
     results: [(name, bytes)]
     preview_state_key: 'preview_files_two' or 'preview_files_three'
