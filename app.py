@@ -316,11 +316,10 @@ with tab_three:
 
     if st.session_state.results_three:
     st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示（複数可）")  # ← 文言だけお好みで
+    st.caption("クリックでプレビュー表示（複数可）")
     for name, data in st.session_state.results_three:
         c1, c2 = st.columns([0.8, 0.2])
         with c1:
-            # ★ クリックしても上書きせず“追加”する
             if st.button(f"👁 {name}", key=f"preview_three_{name}"):
                 if not any(n == name for n, _ in st.session_state.preview_files_three):
                     st.session_state.preview_files_three.append((name, data))
@@ -331,7 +330,7 @@ with tab_three:
             )
 
     st.subheader("💾 ZIP一括ダウンロード")
-    # …（ZIP生成は既存のまま）
+    # （ZIP生成処理が続く）
 
         out_mem = io.BytesIO()
         with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
