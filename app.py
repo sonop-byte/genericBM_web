@@ -63,22 +63,24 @@ def show_pdf_inline(name: str, data_bytes: bytes):
     import fitz
     from PIL import Image as PILImage
     import base64, io
-    import streamlit as st  # ← markdown で直描画
+    import streamlit as st  # markdownを使用
 
     PREVIEW_MAX_PAGES = 3
-    PREVIEW_DPI = 144  # 実寸表示の基準DPI（等倍で描画）
+    PREVIEW_DPI = 144   # 実寸基準DPI
+    SCALE = 0.7         # 70%表示
 
-    # --- PDF → PNG 実寸レンダリング ---
+    # --- PDFを画像に変換 ---
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
-    pages = []  # [(w,h,b64), ...]
+    pages = []  # [(w, h, b64), ...]
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
-        pix  = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        img  = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        buf  = io.BytesIO(); img.save(buf, format="PNG")
-        b64  = base64.b64encode(buf.getvalue()).decode("ascii")
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        img = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         pages.append((pix.width, pix.height, b64))
     doc.close()
 
@@ -91,6 +93,43 @@ def show_pdf_inline(name: str, data_bytes: bytes):
             </div>
             """,
             unsafe_allow_html=True
+        )
+        return
+
+    # --- ページごとに70%スケールで中央表示 ---
+    html_parts = [f'<div style="font-weight:600;margin-bottom:6px;text-align:center;">👁 プレビュー：{name}</div>']
+    for idx, (w, h, b64) in enumerate(pages, start=1):
+        scaled_w = int(w * SCALE)
+        scaled_h = int(h * SCALE)
+        html_parts.append(
+            f"""
+            <div style="
+                width:{scaled_w}px;
+                margin:0 auto 24px auto;
+                border:1px solid #ddd;
+                border-radius:8px;
+                box-sizing:border-box;
+                background:#fafafa;
+            ">
+              <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
+                Page {idx}（{int(SCALE*100)}%表示）
+              </div>
+              <div style="
+                  width:{scaled_w}px;
+                  max-height:85vh;
+                  overflow:auto;
+                  margin:8px auto 12px auto;
+              ">
+                <img src="data:image/png;base64,{b64}"
+                     width="{scaled_w}" height="{scaled_h}"
+                     style="display:block;margin:0 auto;" />
+              </div>
+            </div>
+            """
+        )
+
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
         )
         return
 
