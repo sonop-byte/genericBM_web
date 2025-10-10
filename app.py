@@ -102,6 +102,33 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             """,
             unsafe_allow_html=True
         )
+        return  # 👈 ここを忘れずに！
+
+    html_parts = [
+        f'<div style="text-align:center;font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>'
+    ]
+    for idx, (w, h, b64) in enumerate(pages, start=1):
+        sw = int(w * SCALE)
+        sh = int(h * SCALE)
+        html_parts.append(
+            f"""
+<div style="display:flex;justify-content:center;margin-bottom:24px;">
+  <div style="width:{sw}px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;background:#fafafa;">
+    <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
+      Page {idx}（{int(SCALE*100)}%表示）
+    </div>
+    <div style="width:{sw}px;max-height:85vh;overflow:auto;margin:8px auto 12px auto;">
+      <img src="data:image/png;base64,{b64}" width="{sw}" height="{sh}" style="display:block;margin:0 auto;" />
+    </div>
+  </div>
+</div>
+            """
+        )
+
+    st.markdown("".join(html_parts), unsafe_allow_html=True)  # ✅ これが関数の中に入っていることが重要
+
+
+# ====== 結果表示・DL・プレビュー管理 ======
 def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
     """
     results: [(name, bytes)]
@@ -162,6 +189,7 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
         st.markdown("---")
         for name, data in st.session_state[preview_state_key]:
             show_pdf_inline(name, data)
+
 
         return
 
