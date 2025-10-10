@@ -83,11 +83,12 @@ def show_pdf_inline(name: str, data_bytes: bytes):
     doc.close()
 
     html = f"""
-    <div style="max-width:1500px;margin:0 auto;border:1px solid #ddd;border-radius:8px;padding:8px 12px;">
-      <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
-      {''.join(img_tags) if img_tags else '<div style="padding:10px;">プレビューできるページがありません。</div>'}
+    <div style="width:1500px; margin:0 auto; border:1px solid #ddd; border-radius:8px; padding:8px 12px;">
+     <div style="font-weight:600; margin-bottom:6px;">👁 プレビュー：{name}</div>
+     {''.join(img_tags) if img_tags else '<div style="padding:10px;">プレビューできるページがありません。</div>'}
     </div>
     """
+
     est_height = min(1200, 260 * max(1, n_pages) + 80)
     components.html(html, height=est_height, scrolling=True)
 
