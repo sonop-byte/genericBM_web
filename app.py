@@ -62,14 +62,16 @@ def add_date_suffix(filename: str) -> str:
 def show_pdf_inline(name: str, data_bytes: bytes):
     import fitz
     from PIL import Image as PILImage
+    import streamlit.components.v1 as components
+    import base64, io
+
     PREVIEW_MAX_PAGES = 3
-    PREVIEW_DPI = 144  # ←このDPIでの実寸ピクセル幅に合わせてコンテナ幅を可変にします
+    PREVIEW_DPI = 144  # 実寸レンダリング用のDPI
 
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
 
-    # 各ページのPNGと寸法を取得
-    page_infos = []  # [(w, h, b64), ...]
+    page_infos = []
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
@@ -79,50 +81,45 @@ def show_pdf_inline(name: str, data_bytes: bytes):
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        page_infos.append((img.width, img.height, b64))
+        page_infos.append((pix.width, pix.height, b64))
     doc.close()
 
-    # コンテナ幅＝1ページ目の幅（プレビューDPIでのピクセル幅）
-    # ただし画面が狭い場合ははみ出さないよう max-width を効かせる
-    container_w = page_infos[0][0] if page_infos else 800  # デフォルト800px
+    if not page_infos:
+        html = f"""
+        <div style="padding:10px;border:1px solid #ccc;border-radius:8px;">
+          <div style="font-weight:600;">👁 プレビュー：{name}</div>
+          <div>プレビューできるページがありません。</div>
+        </div>
+        """
+        components.html(html, height=200, scrolling=True)
+        return
 
-    # 実際に表示する高さを見積もり（各画像をコンテナ幅にフィットさせる前提）
-    est_height = 60  # タイトルや余白ぶん
-    for (w, h, _) in page_infos:
-        scale = container_w / max(1, w)
-        est_height += int(h * scale) + 16  # 画像間マージン
+    # --- ページごとに実寸（px）で描画 ---
+    html_parts = [f'<div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>']
+    total_height = 40
+    for idx, (w, h, b64) in enumerate(page_infos, start=1):
+        html_parts.append(
+            f"""
+            <div style="width:{w}px;margin:0 auto 24px auto;border:1px solid #ddd;border-radius:8px;padding:8px;">
+                <div style="font-size:0.9em;color:#666;text-align:right;margin-bottom:4px;">Page {idx}</div>
+                <img src='data:image/png;base64,{b64}' width='{w}' height='{h}'
+                     style='display:block;margin:0 auto;border:1px solid #ccc;
+                            box-shadow:0 0 6px rgba(0,0,0,0.08);'/>
+            </div>
+            """
+        )
+        total_height += h + 60  # ページ間余白を加算
 
-    # 画面埋め尽くし防止の上限（必要なら調整可）
-    est_height = min(est_height, 2000)
-
-    # HTML組み立て（画像はコンテナ幅にフィット）
-    if page_infos:
-        img_tags = []
-        for (_, _, b64) in page_infos:
-            img_tags.append(
-                f"<img src='data:image/png;base64,{b64}' "
-                f"style='display:block;margin:12px auto;width:100%;height:auto;'/>"
-            )
-        imgs_html = "".join(img_tags)
-    else:
-        imgs_html = '<div style="padding:10px;">プレビューできるページがありません。</div>'
+    # 全体の高さを見積もり（上限 3000px）
+    total_height = min(total_height, 3000)
 
     html = f"""
-    <div style="
-        width:{container_w}px;
-        max-width:95vw;
-        margin:0 auto;
-        border:1px solid #ddd;
-        border-radius:8px;
-        padding:8px 12px;
-        box-sizing:border-box;">
-      <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
-      {imgs_html}
+    <div style="text-align:center;">
+        {''.join(html_parts)}
     </div>
     """
+    components.html(html, height=total_height, scrolling=True)
 
-    import streamlit.components.v1 as components
-    components.html(html, height=est_height, scrolling=True)
 
 if "results_two" not in st.session_state:
     st.session_state.results_two = []
