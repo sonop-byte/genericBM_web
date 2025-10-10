@@ -1,4 +1,3 @@
-# pdf_diff_core_small.py
 import io
 from typing import Optional, Tuple
 import fitz
@@ -46,14 +45,7 @@ def _encode_jpeg_bytes(img: Image.Image, quality: int = 70, subsampling: int = 2
     img.save(buf, format="JPEG", quality=quality, subsampling=subsampling, optimize=True)
     return buf.getvalue()
 
-def generate_diff(
-    before_pdf: str,
-    after_pdf: str,
-    out_pdf: str,
-    dpi: int = 200,
-    whiten: int = 0,
-    page_mode: str = "min",
-) -> None:
+def generate_diff(before_pdf: str, after_pdf: str, out_pdf: str, dpi: int = 200, whiten: int = 0, page_mode: str = "min") -> None:
     doc_b = fitz.open(before_pdf)
     doc_a = fitz.open(after_pdf)
     n_b, n_a = doc_b.page_count, doc_a.page_count
@@ -72,17 +64,15 @@ def generate_diff(
             img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=None) if page_b else Image.new("RGB", target_px, (255,255,255))
             if img_b.size != target_px:
                 img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=target_px)
-
             img_a = _render_page_to_rgb(page_a, dpi=dpi, target_px=target_px) if page_a else Image.new("RGB", target_px, (255,255,255))
 
-            col_b = _colorize_with_brightness(img_b, (255,0,255), whiten=whiten)
-            col_a = _colorize_with_brightness(img_a, (0,255,0),   whiten=whiten)
+            col_b = _colorize_with_brightness(img_b, (153,0,153), whiten=whiten)   # #990099
+            col_a = _colorize_with_brightness(img_a, (0,128,0),   whiten=whiten)   # #008000
             diff_img = ImageChops.multiply(col_b, col_a)
 
             w_px, h_px = diff_img.size
             w_pt, h_pt = w_px*72.0/dpi, h_px*72.0/dpi
             jpeg_bytes = _encode_jpeg_bytes(diff_img, quality=70, subsampling=2)
-
             page = out.new_page(width=w_pt, height=h_pt)
             page.insert_image(fitz.Rect(0,0,w_pt,h_pt), stream=jpeg_bytes, keep_proportion=False)
 
@@ -92,16 +82,41 @@ def generate_diff(
         doc_b.close()
         doc_a.close()
 
-if __name__ == "__main__":
-    import argparse, os
-    p = argparse.ArgumentParser()
-    p.add_argument("-b", "--before", required=True)
-    p.add_argument("-a", "--after", required=True)
-    p.add_argument("-o", "--out", required=True)
-    p.add_argument("--dpi", type=int, default=200)
-    p.add_argument("--whiten", type=int, default=0)
-    p.add_argument("--page-mode", default="min")
-    args = p.parse_args()
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    generate_diff(args.before, args.after, args.out, dpi=args.dpi, whiten=args.whiten, page_mode=args.page_mode)
-    print(f"Done: {os.path.abspath(args.out)}")
+def generate_diff_bytes(before_pdf_bytes: bytes, after_pdf_bytes: bytes, dpi: int = 200, whiten: int = 0, page_mode: str = "min") -> bytes:
+    """PDFバイト列から差分PDFのバイト列を返す軽量ラッパー"""
+    doc_b = fitz.open(stream=before_pdf_bytes, filetype="pdf")
+    doc_a = fitz.open(stream=after_pdf_bytes, filetype="pdf")
+    n_b, n_a = doc_b.page_count, doc_a.page_count
+    n = min(n_b, n_a) if page_mode == "min" else max(n_b, n_a)
+    if n == 0:
+        doc_b.close(); doc_a.close()
+        raise RuntimeError("ページがありません。")
+
+    out = fitz.open()
+    try:
+        for i in range(n):
+            page_b = doc_b.load_page(i) if i < n_b else None
+            page_a = doc_a.load_page(i) if i < n_a else None
+            base_rect = (page_b or page_a).rect
+            target_px = _size_in_px(base_rect, dpi)
+
+            img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=None) if page_b else Image.new("RGB", target_px, (255,255,255))
+            if img_b.size != target_px:
+                img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=target_px)
+            img_a = _render_page_to_rgb(page_a, dpi=dpi, target_px=target_px) if page_a else Image.new("RGB", target_px, (255,255,255))
+
+            col_b = _colorize_with_brightness(img_b, (153,0,153), whiten=whiten)
+            col_a = _colorize_with_brightness(img_a, (0,128,0),   whiten=whiten)
+            diff_img = ImageChops.multiply(col_b, col_a)
+
+            w_px, h_px = diff_img.size
+            w_pt, h_pt = w_px*72.0/dpi, h_px*72.0/dpi
+            jpeg_bytes = _encode_jpeg_bytes(diff_img, quality=70, subsampling=2)
+            page = out.new_page(width=w_pt, height=h_pt)
+            page.insert_image(fitz.Rect(0,0,w_pt,h_pt), stream=jpeg_bytes, keep_proportion=False)
+
+        return out.tobytes(deflate=True)
+    finally:
+        out.close()
+        doc_b.close()
+        doc_a.close()
