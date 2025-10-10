@@ -188,7 +188,7 @@ with tab_two:
             key="after_two", label_visibility="collapsed"
         )
 
-    if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
+    if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
         st.session_state.run_two = True
 
     if st.session_state.run_two:
