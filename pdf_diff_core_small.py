@@ -5,7 +5,6 @@ import io, zipfile
 from datetime import datetime
 import streamlit as st
 import fitz
-from pdf_diff_core_small import generate_diff_bytes
 
 st.set_page_config(page_title="genericBM – PDF差分比較ツール（Web版）", layout="wide")
 
