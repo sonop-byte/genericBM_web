@@ -102,7 +102,7 @@ if "run_two" not in st.session_state:
 if "run_three" not in st.session_state:
     st.session_state.run_three = False
 
-tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3ファイル比較（1対2）"])
+tab_two, tab_three = st.tabs(["📄 2ファイル比較（1対1）", "📚 3ファイル比較（1対2）"])
 
 with tab_two:
     c1, c2 = st.columns(2)
