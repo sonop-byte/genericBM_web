@@ -102,6 +102,67 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             """,
             unsafe_allow_html=True
         )
+        def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
+    """
+    results: [(name, bytes)]
+    preview_state_key: 'preview_files_two' or 'preview_files_three'
+    zip_prefix: 'genericBM_1to1' / 'genericBM_1to2'
+    dl_key_prefix: 'dl_two' / 'dl_three'
+    """
+    if not results:
+        return
+
+    st.subheader("📄 生成済み差分PDF")
+    st.caption("クリックでプレビュー表示（複数可）")
+
+    for name, data in results:
+        col_l, col_r = st.columns([0.7, 0.3])
+
+        # 左：プレビュー追加
+        with col_l:
+            if st.button(f"👁 {name}", key=f"{preview_state_key}_btn_{name}"):
+                if not any(n == name for n, _ in st.session_state[preview_state_key]):
+                    st.session_state[preview_state_key].append((name, data))
+
+        # 右：DL + 閉じるボタン
+        with col_r:
+            c_dl, c_close = st.columns(2)
+            with c_dl:
+                st.download_button(
+                    "⬇️ DL", data=data, file_name=name,
+                    mime="application/pdf", key=f"{dl_key_prefix}_{name}"
+                )
+            with c_close:
+                if any(n == name for n, _ in st.session_state[preview_state_key]):
+                    if st.button("❌ 閉じる", key=f"close_{preview_state_key}_{name}"):
+                        st.session_state[preview_state_key] = [
+                            (n, d) for n, d in st.session_state[preview_state_key] if n != name
+                        ]
+
+    # ZIP 一括DL
+    st.subheader("💾 ZIP一括ダウンロード")
+    out_mem = io.BytesIO()
+    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in results:
+            zf.writestr(name, data)
+    st.download_button(
+        "📥 ZIP一括DL", out_mem.getvalue(),
+        file_name=f"{zip_prefix}_{datetime.now().strftime('%Y%m%d')}.zip",
+        mime="application/zip"
+    )
+
+    # 🧹まとめて消す
+    col_clear, _ = st.columns([0.25, 0.75])
+    with col_clear:
+        if st.button("🧹 プレビューをすべてクリア", key=f"clear_{preview_state_key}"):
+            st.session_state[preview_state_key] = []
+
+    # プレビュー表示（複数）
+    if st.session_state[preview_state_key]:
+        st.markdown("---")
+        for name, data in st.session_state[preview_state_key]:
+            show_pdf_inline(name, data)
+
         return
 
     html_parts = [
