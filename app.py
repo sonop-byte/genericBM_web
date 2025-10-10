@@ -72,19 +72,22 @@ def add_date_suffix(filename: str) -> str:
 
 # ====== プレビュー（実寸の70%でページごとに中央表示） ======
 def show_pdf_inline(name: str, data_bytes: bytes) -> None:
-    PREVIEW_MAX_PAGES = 3      # プレビューする最大ページ数
-    PREVIEW_DPI = 144          # 実寸基準DPI
-    SCALE = 0.7                # 実寸に対する表示倍率（70%）
+    PREVIEW_MAX_PAGES = 3
+    PREVIEW_DPI = 144
+    SCALE = 0.7
+
+    import base64, io
+    from PIL import Image
+    import fitz
 
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
+    pages = []
 
-    pages = []  # [(w, h, b64), ...]
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        # PIL経由でPNG化
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -104,34 +107,41 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
         )
         return
 
+    # --- ページを中央に配置（左右中央揃え） ---
     html_parts = [
-        f'<div style="font-weight:600;margin-bottom:6px;text-align:center;">👁 プレビュー：{name}</div>'
+        f'<div style="text-align:center;font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>'
     ]
+
     for idx, (w, h, b64) in enumerate(pages, start=1):
         scaled_w = int(w * SCALE)
         scaled_h = int(h * SCALE)
         html_parts.append(
             f"""
 <div style="
-    width:{scaled_w}px;
-    margin:0 auto 24px auto;
-    border:1px solid #ddd;
-    border-radius:8px;
-    box-sizing:border-box;
-    background:#fafafa;
+    display:flex;
+    justify-content:center;
+    margin-bottom:24px;
 ">
-  <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
-    Page {idx}（{int(SCALE*100)}%表示）
-  </div>
   <div style="
       width:{scaled_w}px;
-      max-height:85vh;
-      overflow:auto;
-      margin:8px auto 12px auto;
+      border:1px solid #ddd;
+      border-radius:8px;
+      box-sizing:border-box;
+      background:#fafafa;
   ">
-    <img src="data:image/png;base64,{b64}"
-         width="{scaled_w}" height="{scaled_h}"
-         style="display:block;margin:0 auto;" />
+    <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
+      Page {idx}（{int(SCALE*100)}%表示）
+    </div>
+    <div style="
+        width:{scaled_w}px;
+        max-height:85vh;
+        overflow:auto;
+        margin:8px auto 12px auto;
+    ">
+      <img src="data:image/png;base64,{b64}"
+           width="{scaled_w}" height="{scaled_h}"
+           style="display:block;margin:0 auto;" />
+    </div>
   </div>
 </div>
             """
