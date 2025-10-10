@@ -1,207 +1,178 @@
-# pdf_diff_core_small.py
-import io
-from typing import Optional, Tuple
+# app.py — genericBM（UI復元版・B案コア呼び出し）
+# 見た目（文言・色・タブ名）をスクショ当時に戻しつつ、内部は generate_diff_bytes を使用
+
+import io, zipfile
+from datetime import datetime
+import streamlit as st
 import fitz
-from PIL import Image, ImageChops, ImageOps
+from pdf_diff_core_small import generate_diff_bytes
 
-def _render_page_to_rgb(
-    page: Optional[fitz.Page],
-    dpi: int,
-    target_px: Optional[Tuple[int, int]] = None
-) -> Image.Image:
-    """
-    PDFのページをRGB画像へレンダリング。
-    target_pxが指定されれば、その最大内接サイズに収めて白キャンバスへ配置。
-    """
-    if page is None:
-        # 呼び出し側で target_px を用意している想定
-        if target_px is None:
-            # フォールバック（A4相当 72dpi）: 595x842pt -> 200dpi換算など本来は必要だが、
-            # 呼び出し側が target_px を与える前提なので最小限に。
-            return Image.new("RGB", (1200, 1700), (255, 255, 255))
-        return Image.new("RGB", target_px, (255, 255, 255))
+st.set_page_config(page_title="genericBM – PDF差分比較ツール（Web版）", layout="wide")
 
-    rect = page.rect
-    if target_px is None:
-        # DPIスケールでそのままレンダリング
-        zoom = dpi / 72.0
-        pix = page.get_pixmap(
-            matrix=fitz.Matrix(zoom, zoom),
-            colorspace=fitz.csRGB,
-            alpha=False
+# ====== Header / Logo ======
+# 手元にロゴがあれば ./assets/logo_gbm.png などに置いてください。無ければ自動スキップ。
+logo_paths = ["./assets/logo_gbm.png", "./logo_gbm.png", "./assets/logo.png", "./logo.png"]
+for _p in logo_paths:
+    try:
+        import os
+        if os.path.exists(_p):
+            st.image(_p, width=88)
+            break
+    except Exception:
+        pass
+
+st.title("genericBM – PDF差分比較ツール（Web版）")
+st.caption("修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。")
+
+# ====== Styles ======
+st.markdown("""
+<style>
+.label-before { font-weight:700; color:#990099; margin:16px 0 6px 0; }
+.label-after  { font-weight:700; color:#008000; margin:16px 0 6px 0; }
+.footer       { color:#6b7280; font-size:0.9rem; margin-top:24px; text-align:center; }
+.preview-wrap { max-width:1500px; margin:0 auto; }
+hr { margin: 1rem 0; }
+</style>
+""", unsafe_allow_html=True)
+
+# ====== 詳細設定（スクショ準拠：折りたたみ） ======
+with st.expander("詳細設定", expanded=False):
+    dpi = st.slider("DPI（出力解像度）", 72, 600, 200, 10)
+# 既定値（エクスパンダ閉時）は200
+if "dpi" not in locals():
+    dpi = 200
+
+today_tag = datetime.now().strftime("%Y%m%d")
+
+# ====== Tabs（スクショ準拠の文言） ======
+tab1, tab_zip, tab3 = st.tabs(["🧾 PDF 2枚比較", "📦 フォルダ比較（ZIP）", "📚 複数PDF 1:1 比較"])
+
+def _previews_from_pdf_bytes(pdf_bytes: bytes):
+    imgs = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as d:
+        for i in range(d.page_count):
+            pix = d.load_page(i).get_pixmap()
+            imgs.append(pix.tobytes("png"))
+    return imgs
+
+# -------------------------------
+# 🧾 PDF 2枚比較（スクショの文言）
+# -------------------------------
+with tab1:
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown('<div class="label-before">修正前（Before） PDF</div>', unsafe_allow_html=True)
+        before = st.file_uploader("Before を選択", type=["pdf"], key="t1_before")
+
+    with c2:
+        st.markdown('<div class="label-after">修正後（After） PDF</div>', unsafe_allow_html=True)
+        after = st.file_uploader("After を選択", type=["pdf"], key="t1_after")
+
+    st.caption("※ 2つのPDFを選択してください。")
+
+    run_2 = st.button("差分を実行（2ファイル）", type="primary", use_container_width=True)
+
+    if run_2 and before and after:
+        with st.spinner("差分生成中…"):
+            diff_pdf = generate_diff_bytes(before.read(), after.read(), dpi=dpi, whiten=0, page_mode="min")
+            previews = _previews_from_pdf_bytes(diff_pdf)
+
+        st.markdown("#### プレビュー（幅1500px内）")
+        st.markdown('<div class="preview-wrap">', unsafe_allow_html=True)
+        for png in previews:
+            st.image(png, use_column_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.divider()
+        st.markdown("#### ダウンロード")
+        st.download_button(
+            "個別DL：BeforevsAfter_diff.pdf",
+            data=diff_pdf,
+            file_name=f"BeforevsAfter_{today_tag}.pdf",
+            mime="application/pdf",
+            use_container_width=True
         )
-        return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
-    # 指定ピクセルに収まるようにレンダリングして白キャンバスへ
-    target_w, target_h = target_px
-    scale = max(target_w / rect.width, target_h / rect.height)
-    zoom = max(scale, 1.0)
-    pix = page.get_pixmap(
-        matrix=fitz.Matrix(zoom, zoom),
-        colorspace=fitz.csRGB,
-        alpha=False
-    )
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    img = ImageOps.contain(img, (target_w, target_h))
-    canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
-    canvas.paste(img, ((target_w - img.width) // 2, (target_h - img.height) // 2))
-    return canvas
+    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
 
-def _size_in_px(rect: fitz.Rect, dpi: int) -> Tuple[int, int]:
-    return (int(round(rect.width * dpi / 72.0)), int(round(rect.height * dpi / 72.0)))
+# -------------------------------
+# 📦 フォルダ比較（ZIP）※見た目だけ復元（機能は未変更）
+# -------------------------------
+with tab_zip:
+    st.info("このタブは見た目の復元のみ行っています（処理は未実装/据え置き）。必要になったら実装を入れます。")
+    left, right = st.columns(2)
+    with left:
+        st.markdown('<div class="label-before">修正前（Before） フォルダZIP</div>', unsafe_allow_html=True)
+        st.file_uploader("Before（ZIP）を選択", type=["zip"], key="zip_before")
+    with right:
+        st.markdown('<div class="label-after">修正後（After） フォルダZIP</div>', unsafe_allow_html=True)
+        st.file_uploader("After（ZIP）を選択", type=["zip"], key="zip_after")
 
-def _colorize_with_brightness(
-    rgb_image: Image.Image,
-    target_color: Tuple[int, int, int],
-    whiten: Optional[int] = None
-) -> Image.Image:
-    """
-    グレースケールの明度を保持しつつ、指定色へトーンマッピング。
-    whiten を設定するとその閾値以上の明部を白飛びさせる（背景の色付きを抑える用途）。
-    """
-    gray = rgb_image.convert("L")
-    if whiten and whiten > 0:
-        gray = gray.point(lambda v: 255 if v >= whiten else v, mode="L")
+    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
 
-    w, h = rgb_image.size
-    out = Image.new("RGB", (w, h))
-    tr, tg, tb = target_color
-    gpx, opx = gray.load(), out.load()
+# -------------------------------
+# 📚 複数PDF 1:1 比較（= Before1 vs After2 の機能そのまま）
+# -------------------------------
+with tab3:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<div class="label-before">修正前（Before1） PDF</div>', unsafe_allow_html=True)
+        before1 = st.file_uploader("Before1 を選択", type=["pdf"], key="t3_before1")
+    with c2:
+        st.markdown('<div class="label-after">修正後（After1） PDF</div>', unsafe_allow_html=True)
+        after1 = st.file_uploader("After1 を選択", type=["pdf"], key="t3_after1")
 
-    for y in range(h):
-        for x in range(w):
-            v = gpx[x, y]  # 0..255
-            # v が暗いほど target_color に近く、明るいほど白に近づける
-            opx[x, y] = (
-                int(tr + (255 - tr) * (v / 255.0)),
-                int(tg + (255 - tg) * (v / 255.0)),
-                int(tb + (255 - tb) * (v / 255.0)),
+    st.markdown('<div class="label-after">修正後（After2） PDF</div>', unsafe_allow_html=True)
+    after2 = st.file_uploader("After2 を選択", type=["pdf"], key="t3_after2")
+
+    run_3 = st.button("差分を実行（複数PDF 1:1）", type="primary", use_container_width=True)
+
+    if run_3 and before1 and after1 and after2:
+        with st.spinner("差分生成中…"):
+            # Before1 vs After1、Before1 vs After2 をそれぞれ作る（従来機能）
+            pdf_b1_a1 = generate_diff_bytes(before1.read(), after1.read(), dpi=dpi, whiten=0, page_mode="min")
+            pdf_b1_a2 = generate_diff_bytes(before1.read(), after2.read(), dpi=dpi, whiten=0, page_mode="min")
+            previews = _previews_from_pdf_bytes(pdf_b1_a1) + _previews_from_pdf_bytes(pdf_b1_a2)
+
+        st.markdown("#### プレビュー（幅1500px内）")
+        st.markdown('<div class="preview-wrap">', unsafe_allow_html=True)
+        for png in previews:
+            st.image(png, use_column_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.divider()
+        st.markdown("#### ダウンロード")
+        col_a1, col_a2 = st.columns(2)
+        with col_a1:
+            st.download_button(
+                "B1_vs_A1_diff.pdf をDL",
+                data=pdf_b1_a1,
+                file_name=f"B1_vs_A1_{today_tag}.pdf",
+                mime="application/pdf",
+                use_container_width=True
             )
-    return out
+        with col_a2:
+            st.download_button(
+                "B1_vs_A2_diff.pdf をDL",
+                data=pdf_b1_a2,
+                file_name=f"B1_vs_A2_{today_tag}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
-def _encode_jpeg_bytes(img: Image.Image, quality: int = 70, subsampling: int = 2) -> bytes:
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=quality, subsampling=subsampling, optimize=True)
-    return buf.getvalue()
+        # ZIP一括（従来どおり）
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"B1_vs_A1_{today_tag}.pdf", pdf_b1_a1)
+            zf.writestr(f"B1_vs_A2_{today_tag}.pdf", pdf_b1_a2)
+        zip_buf.seek(0)
+        st.download_button(
+            "ZIP一括DL：B1vsA1A2.zip",
+            data=zip_buf,
+            file_name=f"B1vsA1A2_{today_tag}.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
 
-def generate_diff(
-    before_pdf: str,
-    after_pdf: str,
-    out_pdf: str,
-    dpi: int = 200,
-    whiten: int = 0,
-    page_mode: str = "min",
-) -> None:
-    """
-    ファイルパスを受け取り、差分結果PDFを out_pdf へ保存（従来API）。
-    合成色は Before:#990099 / After:#008000（= (153,0,153) / (0,128,0) ）。
-    """
-    doc_b = fitz.open(before_pdf)
-    doc_a = fitz.open(after_pdf)
-    n_b, n_a = doc_b.page_count, doc_a.page_count
-    n = min(n_b, n_a) if page_mode == "min" else max(n_b, n_a)
-    if n == 0:
-        doc_b.close()
-        doc_a.close()
-        raise RuntimeError("ページがありません。")
-
-    out = fitz.open()
-    try:
-        for i in range(n):
-            page_b = doc_b.load_page(i) if i < n_b else None
-            page_a = doc_a.load_page(i) if i < n_a else None
-            base_rect = (page_b or page_a).rect
-            target_px = _size_in_px(base_rect, dpi)
-
-            img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=None) if page_b else Image.new("RGB", target_px, (255, 255, 255))
-            if img_b.size != target_px:
-                img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=target_px)
-
-            img_a = _render_page_to_rgb(page_a, dpi=dpi, target_px=target_px) if page_a else Image.new("RGB", target_px, (255, 255, 255))
-
-            # 色は厳密に #990099 / #008000
-            col_b = _colorize_with_brightness(img_b, (153, 0, 153), whiten=whiten)
-            col_a = _colorize_with_brightness(img_a, (0, 128, 0),   whiten=whiten)
-            diff_img = ImageChops.multiply(col_b, col_a)
-
-            w_px, h_px = diff_img.size
-            w_pt, h_pt = w_px * 72.0 / dpi, h_px * 72.0 / dpi
-            jpeg_bytes = _encode_jpeg_bytes(diff_img, quality=70, subsampling=2)
-
-            page = out.new_page(width=w_pt, height=h_pt)
-            page.insert_image(fitz.Rect(0, 0, w_pt, h_pt), stream=jpeg_bytes, keep_proportion=False)
-
-        out.save(out_pdf, deflate=True)
-    finally:
-        out.close()
-        doc_b.close()
-        doc_a.close()
-
-def generate_diff_bytes(
-    before_pdf_bytes: bytes,
-    after_pdf_bytes: bytes,
-    dpi: int = 200,
-    whiten: int = 0,
-    page_mode: str = "min",
-) -> bytes:
-    """
-    PDFバイト列を受け取り、差分結果PDFのバイト列を返す新API（Streamlit向け）。
-    合成色は Before:#990099 / After:#008000。
-    """
-    doc_b = fitz.open(stream=before_pdf_bytes, filetype="pdf")
-    doc_a = fitz.open(stream=after_pdf_bytes, filetype="pdf")
-    n_b, n_a = doc_b.page_count, doc_a.page_count
-    n = min(n_b, n_a) if page_mode == "min" else max(n_b, n_a)
-    if n == 0:
-        doc_b.close()
-        doc_a.close()
-        raise RuntimeError("ページがありません。")
-
-    out = fitz.open()
-    try:
-        for i in range(n):
-            page_b = doc_b.load_page(i) if i < n_b else None
-            page_a = doc_a.load_page(i) if i < n_a else None
-            base_rect = (page_b or page_a).rect
-            target_px = _size_in_px(base_rect, dpi)
-
-            img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=None) if page_b else Image.new("RGB", target_px, (255, 255, 255))
-            if img_b.size != target_px:
-                img_b = _render_page_to_rgb(page_b, dpi=dpi, target_px=target_px)
-
-            img_a = _render_page_to_rgb(page_a, dpi=dpi, target_px=target_px) if page_a else Image.new("RGB", target_px, (255, 255, 255))
-
-            col_b = _colorize_with_brightness(img_b, (153, 0, 153), whiten=whiten)  # #990099
-            col_a = _colorize_with_brightness(img_a, (0, 128, 0),   whiten=whiten)  # #008000
-            diff_img = ImageChops.multiply(col_b, col_a)
-
-            w_px, h_px = diff_img.size
-            w_pt, h_pt = w_px * 72.0 / dpi, h_px * 72.0 / dpi
-            jpeg_bytes = _encode_jpeg_bytes(diff_img, quality=70, subsampling=2)
-
-            page = out.new_page(width=w_pt, height=h_pt)
-            page.insert_image(fitz.Rect(0, 0, w_pt, h_pt), stream=jpeg_bytes, keep_proportion=False)
-
-        return out.tobytes(deflate=True)
-    finally:
-        out.close()
-        doc_b.close()
-        doc_a.close()
-
-if __name__ == "__main__":
-    import argparse, os
-    p = argparse.ArgumentParser()
-    p.add_argument("-b", "--before", required=True)
-    p.add_argument("-a", "--after", required=True)
-    p.add_argument("-o", "--out", required=True)
-    p.add_argument("--dpi", type=int, default=200)
-    p.add_argument("--whiten", type=int, default=0)
-    p.add_argument("--page-mode", default="min")
-    args = p.parse_args()
-
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    generate_diff(
-        args.before, args.after, args.out,
-        dpi=args.dpi, whiten=args.whiten, page_mode=args.page_mode
-    )
-    print(f"Done: {os.path.abspath(args.out)}")
+    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
