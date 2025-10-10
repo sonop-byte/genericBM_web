@@ -1,7 +1,8 @@
-# app.py — genericBM（UI復元版）
-# 1) タブ名：📄 2ファイル比較（1対1）／📚 3ファイル比較（1対2）
-# 2) 1対2タブのラベル見た目を1対1と統一（色/太字/サイズ）
-# 3) プレビューは実寸の70%でページごと中央表示（スクロール枠も同じ幅）
+# app.py — genericBM（現時点・完全版）
+# ・タブ名：📄 2ファイル比較（1対1）／📚 3ファイル比較（1対2）
+# ・1対2タブの見出し色/太字は1対1と統一（Before: #990099 / After: #008000）
+# ・差分PDFプレビュー：実寸の70%でページごと中央表示（A4/A3混在OK）
+# ・1対1/1対2 ともに、生成後はファイル名クリックでプレビューを“追加表示”できる
 
 import os
 import io
@@ -15,13 +16,13 @@ import streamlit as st
 from PIL import Image
 import fitz  # PyMuPDF
 
-from pdf_diff_core_small import generate_diff  # 既存のファイルパス版APIを使用
+from pdf_diff_core_small import generate_diff  # コア（ファイルパス版）
 
-# ====== カラー定義（UI上のラベル色） ======
+# ====== カラー定義 ======
 BEFORE_LABEL_COLOR = "#990099"  # 紫
 AFTER_LABEL_COLOR  = "#008000"  # 緑
 
-# ====== ページ設定（アイコンは存在すれば使用） ======
+# ====== ページ設定（アイコンがあれば使用） ======
 ICON_PATH = "gBmicon.png"
 icon_img = None
 if os.path.exists(ICON_PATH):
@@ -36,7 +37,7 @@ st.set_page_config(
     layout="centered",
 )
 
-# ====== ヘッダ（ロゴ＋タイトル＋説明） ======
+# ====== ヘッダ ======
 st.markdown(
     """
     <div style='text-align:center;'>
@@ -70,20 +71,16 @@ def add_date_suffix(filename: str) -> str:
     base, ext = os.path.splitext(filename)
     return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
-# ====== プレビュー（実寸の70%でページごとに中央表示） ======
+# ====== プレビュー（実寸の70%・ページごと中央） ======
 def show_pdf_inline(name: str, data_bytes: bytes) -> None:
     PREVIEW_MAX_PAGES = 3
     PREVIEW_DPI = 144
-    SCALE = 0.7
-
-    import base64, io
-    from PIL import Image
-    import fitz
+    SCALE = 0.7  # 70%
 
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
-    pages = []
 
+    pages = []  # [(w, h, b64), ...]
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
@@ -107,40 +104,21 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
         )
         return
 
-    # --- ページを中央に配置（左右中央揃え） ---
     html_parts = [
         f'<div style="text-align:center;font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>'
     ]
-
     for idx, (w, h, b64) in enumerate(pages, start=1):
-        scaled_w = int(w * SCALE)
-        scaled_h = int(h * SCALE)
+        sw = int(w * SCALE)
+        sh = int(h * SCALE)
         html_parts.append(
             f"""
-<div style="
-    display:flex;
-    justify-content:center;
-    margin-bottom:24px;
-">
-  <div style="
-      width:{scaled_w}px;
-      border:1px solid #ddd;
-      border-radius:8px;
-      box-sizing:border-box;
-      background:#fafafa;
-  ">
+<div style="display:flex;justify-content:center;margin-bottom:24px;">
+  <div style="width:{sw}px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;background:#fafafa;">
     <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
       Page {idx}（{int(SCALE*100)}%表示）
     </div>
-    <div style="
-        width:{scaled_w}px;
-        max-height:85vh;
-        overflow:auto;
-        margin:8px auto 12px auto;
-    ">
-      <img src="data:image/png;base64,{b64}"
-           width="{scaled_w}" height="{scaled_h}"
-           style="display:block;margin:0 auto;" />
+    <div style="width:{sw}px;max-height:85vh;overflow:auto;margin:8px auto 12px auto;">
+      <img src="data:image/png;base64,{b64}" width="{sw}" height="{sh}" style="display:block;margin:0 auto;" />
     </div>
   </div>
 </div>
@@ -155,64 +133,126 @@ if "results_two" not in st.session_state:
 if "results_three" not in st.session_state:
     st.session_state.results_three = []
 if "preview_file" not in st.session_state:
-    st.session_state.preview_file = None
+    st.session_state.preview_file = None  # （後方互換・未使用可）
 if "preview_files_two" not in st.session_state:
-    st.session_state.preview_files_two = []
+    st.session_state.preview_files_two = []  # 1対1の複数プレビュー
 if "preview_files_three" not in st.session_state:
-    st.session_state.preview_files_three = []
+    st.session_state.preview_files_three = []  # 1対2の複数プレビュー
 if "run_two" not in st.session_state:
     st.session_state.run_two = False
 if "run_three" not in st.session_state:
     st.session_state.run_three = False
 
-# ====== タブ（※文言はご指定のとおり） ======
+# ====== タブ ======
 tab_two, tab_three = st.tabs(["📄 2ファイル比較（1対1）", "📚 3ファイル比較（1対2）"])
 
 # -------------------------------
 # 📄 2ファイル比較（1対1）
 # -------------------------------
-if st.session_state.results_two:
-    st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示（複数可）")
+with tab_two:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown(
+            f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>',
+            unsafe_allow_html=True
+        )
+        before_files = st.file_uploader(
+            "", type=["pdf"], accept_multiple_files=True,
+            key="before_two", label_visibility="collapsed"
+        )
+    with c2:
+        st.markdown(
+            f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>',
+            unsafe_allow_html=True
+        )
+        after_files = st.file_uploader(
+            "", type=["pdf"], accept_multiple_files=True,
+            key="after_two", label_visibility="collapsed"
+        )
 
-    for name, data in st.session_state.results_two:
-        c1, c2 = st.columns([0.8, 0.2])
+    if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
+        st.session_state.run_two = True
 
-        with c1:
-            # 追加表示：既に同名がなければ追加
-            if st.button(f"👁 {name}", key=f"preview_two_{name}"):
-                if not any(n == name for n, _ in st.session_state.preview_files_two):
-                    st.session_state.preview_files_two.append((name, data))
+    if st.session_state.run_two:
+        st.session_state.results_two.clear()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                b_paths, a_paths = [], []
+                for f in before_files:
+                    p = os.path.join(tmpdir, f"b_{f.name}")
+                    save_uploaded_to(p, f)
+                    b_paths.append(p)
+                for f in after_files:
+                    p = os.path.join(tmpdir, f"a_{f.name}")
+                    save_uploaded_to(p, f)
+                    a_paths.append(p)
 
-        with c2:
-            st.download_button(
-                "⬇️ DL", data=data, file_name=name,
-                mime="application/pdf", key=f"dl_two_{name}"
-            )
+                b_paths.sort(key=lambda p: os.path.basename(p).lower())
+                a_paths.sort(key=lambda p: os.path.basename(p).lower())
 
-    st.subheader("💾 ZIP一括ダウンロード")
-    out_mem = io.BytesIO()
-    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+                total = min(len(b_paths), len(a_paths))
+                if total == 0:
+                    st.info("比較対象がありません。")
+                else:
+                    prog = st.progress(0)
+                    status = st.empty()
+                    for i in range(total):
+                        b, a = b_paths[i], a_paths[i]
+                        bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
+                        adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
+                        out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
+                        out_path = os.path.join(tmpdir, out_name)
+
+                        status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
+                        generate_diff(b, a, out_path, dpi=dpi)
+                        with open(out_path, "rb") as fr:
+                            st.session_state.results_two.append((out_name, fr.read()))
+                        prog.progress(int((i + 1) / total * 100))
+                    status.write("✅ 比較が完了しました。")
+            except Exception as e:
+                st.error(f"エラー: {e}")
+        st.session_state.run_two = False
+
+    # ▼ 1対1：生成済み一覧・DL・複数プレビュー
+    if st.session_state.results_two:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示（複数可）")
+
         for name, data in st.session_state.results_two:
-            zf.writestr(name, data)
-    zip_name = f"genericBM_1to1_{datetime.now().strftime('%Y%m%d')}.zip"
-    st.download_button(
-        "📥 ZIP一括DL", out_mem.getvalue(),
-        file_name=zip_name, mime="application/zip"
-    )
+            col_l, col_r = st.columns([0.8, 0.2])
 
-    # ▼ 追加された複数プレビューを順に表示
-    if st.session_state.preview_files_two:
-        st.markdown("---")
-        for name, data in st.session_state.preview_files_two:
-            show_pdf_inline(name, data)
+            with col_l:
+                if st.button(f"👁 {name}", key=f"preview_two_{name}"):
+                    if not any(n == name for n, _ in st.session_state.preview_files_two):
+                        st.session_state.preview_files_two.append((name, data))
 
+            with col_r:
+                st.download_button(
+                    "⬇️ DL", data=data, file_name=name,
+                    mime="application/pdf", key=f"dl_two_{name}"
+                )
+
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_two:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to1_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button(
+            "📥 ZIP一括DL", out_mem.getvalue(),
+            file_name=zip_name, mime="application/zip"
+        )
+
+        # 追加されたプレビューを順に表示
+        if st.session_state.preview_files_two:
+            st.markdown("---")
+            for name, data in st.session_state.preview_files_two:
+                show_pdf_inline(name, data)
 
 # -------------------------------
 # 📚 3ファイル比較（1対2）
 # -------------------------------
 with tab_three:
-    # 1:1タブと同じ見た目（色/太字/サイズ）でラベル表示
     st.markdown(
         f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（1つ）</div>',
         unsafe_allow_html=True
@@ -262,48 +302,47 @@ with tab_three:
                 st.error(f"エラー: {e}")
         st.session_state.run_three = False
 
-if st.session_state.results_three:
-    st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示（複数可）")
+    # ▼ 1対2：生成済み一覧・DL・複数プレビュー
+    if st.session_state.results_three:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示（複数可）")
 
-    for name, data in st.session_state.results_three:
-        c1, c2 = st.columns([0.8, 0.2])
-
-        with c1:
-            # クリックで“追加”表示（重複は追加しない）
-            if st.button(f"👁 {name}", key=f"preview_three_{name}"):
-                if not any(n == name for n, _ in st.session_state.preview_files_three):
-                    st.session_state.preview_files_three.append((name, data))
-
-        with c2:
-            st.download_button(
-                "⬇️ DL", data=data, file_name=name,
-                mime="application/pdf", key=f"dl_three_{name}"
-            )
-
-    st.subheader("💾 ZIP一括ダウンロード")
-    out_mem = io.BytesIO()
-    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, data in st.session_state.results_three:
-            zf.writestr(name, data)
-    zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
-    st.download_button(
-        "📥 ZIP一括DL", out_mem.getvalue(),
-        file_name=zip_name, mime="application/zip"
-    )
+            col_l, col_r = st.columns([0.8, 0.2])
 
-    # ▼ 追加された複数プレビューを順に表示
-    if st.session_state.preview_files_three:
+            with col_l:
+                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+                    if not any(n == name for n, _ in st.session_state.preview_files_three):
+                        st.session_state.preview_files_three.append((name, data))
+
+            with col_r:
+                st.download_button(
+                    "⬇️ DL", data=data, file_name=name,
+                    mime="application/pdf", key=f"dl_three_{name}"
+                )
+
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_three:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button(
+            "📥 ZIP一括DL", out_mem.getvalue(),
+            file_name=zip_name, mime="application/zip"
+        )
+
+        if st.session_state.preview_files_three:
+            st.markdown("---")
+            for name, data in st.session_state.preview_files_three:
+                show_pdf_inline(name, data)
+
+# ====== 後方互換の単一プレビュー（不要なら削除可） ======
+if (not st.session_state.get("preview_files_two")) and (not st.session_state.get("preview_files_three")):
+    if st.session_state.get("preview_file"):
+        name, data = st.session_state.preview_file
         st.markdown("---")
-        for name, data in st.session_state.preview_files_three:
-            show_pdf_inline(name, data)
-
-
-# ====== 下部プレビュー（共通） ======
-if st.session_state.preview_file:
-    name, data = st.session_state.preview_file
-    st.markdown("---")
-    show_pdf_inline(name, data)
+        show_pdf_inline(name, data)
 
 # ====== フッター ======
 st.markdown("---")
