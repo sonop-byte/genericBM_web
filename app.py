@@ -314,7 +314,7 @@ with tab_three:
                 st.error(f"エラー: {e}")
         st.session_state.run_three = False
 
-    if st.session_state.results_three:
+if st.session_state.results_three:
     st.subheader("📄 生成済み差分PDF")
     st.caption("クリックでプレビュー表示（複数可）")
     for name, data in st.session_state.results_three:
@@ -331,6 +331,7 @@ with tab_three:
 
     st.subheader("💾 ZIP一括ダウンロード")
     # （ZIP生成処理が続く）
+
 
 
         out_mem = io.BytesIO()
