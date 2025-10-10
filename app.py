@@ -133,7 +133,7 @@ def show_pdf_inline(name: str, data_bytes: bytes):
     # ✅ ← この位置（関数内でスペース4つ）
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-    )
+     )
         return
 
     # --- ページごとに70%スケールで中央表示 ---
