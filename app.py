@@ -176,11 +176,16 @@ if st.session_state.results_two:
     st.caption("クリックでプレビュー表示（複数可）")
     for name, data in st.session_state.results_two:
         c1, c2 = st.columns([0.8, 0.2])
-        with c1:
-            # ▼ クリックしても上書きせず“追加”する
-            if st.button(f"👁 {name}", key=f"preview_two_{name}"):
-                if not any(n == name for n, _ in st.session_state.preview_files_two):
-                    st.session_state.preview_files_two.append((name, data))
+with c1:
+    if st.button(f"👁 {name}", key=f"preview_two_{name}"):
+        if not any(n == name for n, _ in st.session_state.preview_files_two):
+            st.session_state.preview_files_two.append((name, data))
+    # 個別削除
+    if st.button("❌ 閉じる", key=f"close_two_{name}"):
+        st.session_state.preview_files_two = [
+            (n, d) for n, d in st.session_state.preview_files_two if n != name
+        ]
+
         with c2:
             st.download_button(
                 "⬇️ DL", data=data, file_name=name,
@@ -263,10 +268,15 @@ with tab_three:
         st.caption("クリックでプレビュー表示（複数可）")
         for name, data in st.session_state.results_three:
             c1, c2 = st.columns([0.8, 0.2])
-            with c1:
-                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
-                    if not any(n == name for n, _ in st.session_state.preview_files_three):
-                        st.session_state.preview_files_three.append((name, data))
+with c1:
+    if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+        if not any(n == name for n, _ in st.session_state.preview_files_three):
+            st.session_state.preview_files_three.append((name, data))
+    # 個別削除
+    if st.button("❌ 閉じる", key=f"close_three_{name}"):
+        st.session_state.preview_files_three = [
+            (n, d) for n, d in st.session_state.preview_files_three if n != name
+        ]
             with c2:
                 st.download_button(
                     "⬇️ DL", data=data, file_name=name,
