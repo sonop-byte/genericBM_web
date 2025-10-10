@@ -1,178 +1,236 @@
-# app.py — genericBM（UI復元版・B案コア呼び出し）
-# 見た目（文言・色・タブ名）をスクショ当時に戻しつつ、内部は generate_diff_bytes を使用
-
-import io, zipfile
+import os
+import io
+import zipfile
+import tempfile
+import base64
 from datetime import datetime
+import unicodedata
+
 import streamlit as st
-import fitz
-from pdf_diff_core_small import generate_diff_bytes  # ★忘れずに！
+import streamlit.components.v1 as components
+from PIL import Image
+from pdf_diff_core_small import generate_diff
 
-st.set_page_config(page_title="genericBM – PDF差分比較ツール（Web版）", layout="wide")
+BEFORE_LABEL_COLOR = "#990099"
+AFTER_LABEL_COLOR  = "#008000"
 
-# ====== Header / Logo ======
-# 手元にロゴがあれば ./assets/logo_gbm.png などに置いてください。無ければ自動スキップ。
-logo_paths = ["./assets/logo_gbm.png", "./logo_gbm.png", "./assets/logo.png", "./logo.png"]
-for _p in logo_paths:
+ICON_PATH = "gBmicon.png"
+icon_img = None
+if os.path.exists(ICON_PATH):
     try:
-        import os
-        if os.path.exists(_p):
-            st.image(_p, width=88)
-            break
+        icon_img = Image.open(ICON_PATH)
     except Exception:
-        pass
+        icon_img = None
 
-st.title("genericBM – PDF差分比較ツール（Web版）")
-st.caption("修正前・修正後のPDF（またはフォルダZIP）をアップロードして差分を作成します。")
+st.set_page_config(
+    page_title="genericBM – PDF差分比較ツール",
+    page_icon=icon_img if icon_img else "🩺",
+    layout="centered",
+)
 
-# ====== Styles ======
-st.markdown("""
-<style>
-.label-before { font-weight:700; color:#990099; margin:16px 0 6px 0; }
-.label-after  { font-weight:700; color:#008000; margin:16px 0 6px 0; }
-.footer       { color:#6b7280; font-size:0.9rem; margin-top:24px; text-align:center; }
-.preview-wrap { max-width:1500px; margin:0 auto; }
-hr { margin: 1rem 0; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style='text-align:center;'>
+        <img src='https://raw.githubusercontent.com/sonop-byte/genericBM_web/main/gBmicon.png'
+             width='120'
+             style='display:block; margin:auto; margin-bottom:10px;'>
+        <h1 style='font-size:2.2em; margin-bottom:6px;'>genericBM – PDF差分比較ツール（Web版）</h1>
+        <p style='color:gray; font-size:1.0em;'>修正前・修正後のPDFをアップロードして差分を作成します。</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-# ====== 詳細設定（スクショ準拠：折りたたみ） ======
-with st.expander("詳細設定", expanded=False):
-    dpi = st.slider("DPI（出力解像度）", 72, 600, 200, 10)
-# 既定値（エクスパンダ閉時）は200
-if "dpi" not in locals():
-    dpi = 200
+dpi = st.slider(
+    "出力PDFの解像度（dpi）",
+    min_value=100, max_value=400, value=200, step=50,
+    help="数値が高いほど精細になりますが、生成時間と出力サイズが増えます。"
+)
 
-today_tag = datetime.now().strftime("%Y%m%d")
+def safe_base(path_or_name: str) -> str:
+    name = os.path.splitext(os.path.basename(path_or_name))[0]
+    return unicodedata.normalize("NFC", name)
 
-# ====== Tabs（スクショ準拠の文言） ======
-tab1, tab_zip, tab3 = st.tabs(["🧾 PDF 2枚比較", "📦 フォルダ比較（ZIP）", "📚 複数PDF 1:1 比較"])
+def save_uploaded_to(path: str, uploaded) -> None:
+    with open(path, "wb") as f:
+        f.write(uploaded.read())
 
-def _previews_from_pdf_bytes(pdf_bytes: bytes):
-    imgs = []
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as d:
-        for i in range(d.page_count):
-            pix = d.load_page(i).get_pixmap()
-            imgs.append(pix.tobytes("png"))
-    return imgs
+def add_date_suffix(filename: str) -> str:
+    base, ext = os.path.splitext(filename)
+    return f"{base}_{datetime.now().strftime('%Y%m%d')}{ext}"
 
-# -------------------------------
-# 🧾 PDF 2枚比較（スクショの文言）
-# -------------------------------
-with tab1:
-    c1, c2 = st.columns(2)
+def show_pdf_inline(name: str, data_bytes: bytes):
+    import fitz
+    from PIL import Image as PILImage
+    PREVIEW_MAX_PAGES = 3
+    PREVIEW_DPI = 144
 
-    with c1:
-        st.markdown('<div class="label-before">修正前（Before） PDF</div>', unsafe_allow_html=True)
-        before = st.file_uploader("Before を選択", type=["pdf"], key="t1_before")
-
-    with c2:
-        st.markdown('<div class="label-after">修正後（After） PDF</div>', unsafe_allow_html=True)
-        after = st.file_uploader("After を選択", type=["pdf"], key="t1_after")
-
-    st.caption("※ 2つのPDFを選択してください。")
-
-    run_2 = st.button("差分を実行（2ファイル）", type="primary", use_container_width=True)
-
-    if run_2 and before and after:
-        with st.spinner("差分生成中…"):
-            diff_pdf = generate_diff_bytes(before.read(), after.read(), dpi=dpi, whiten=0, page_mode="min")
-            previews = _previews_from_pdf_bytes(diff_pdf)
-
-        st.markdown("#### プレビュー（幅1500px内）")
-        st.markdown('<div class="preview-wrap">', unsafe_allow_html=True)
-        for png in previews:
-            st.image(png, use_column_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.divider()
-        st.markdown("#### ダウンロード")
-        st.download_button(
-            "個別DL：BeforevsAfter_diff.pdf",
-            data=diff_pdf,
-            file_name=f"BeforevsAfter_{today_tag}.pdf",
-            mime="application/pdf",
-            use_container_width=True
+    doc = fitz.open(stream=data_bytes, filetype="pdf")
+    n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
+    img_tags = []
+    for i in range(n_pages):
+        page = doc.load_page(i)
+        zoom = PREVIEW_DPI / 72.0
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        img = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        img_tags.append(
+            f"<img src='data:image/png;base64,{b64}' "
+            f"style='display:block;margin:12px auto;max-width:100%;height:auto;'/>"
         )
+    doc.close()
 
-    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
+    html = f"""
+    <div style="max-width:1500px;margin:0 auto;border:1px solid #ddd;border-radius:8px;padding:8px 12px;">
+      <div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>
+      {''.join(img_tags) if img_tags else '<div style="padding:10px;">プレビューできるページがありません。</div>'}
+    </div>
+    """
+    est_height = min(1200, 260 * max(1, n_pages) + 80)
+    components.html(html, height=est_height, scrolling=True)
 
-# -------------------------------
-# 📦 フォルダ比較（ZIP）※見た目だけ復元（機能は未変更）
-# -------------------------------
-with tab_zip:
-    st.info("このタブは見た目の復元のみ行っています（処理は未実装/据え置き）。必要になったら実装を入れます。")
-    left, right = st.columns(2)
-    with left:
-        st.markdown('<div class="label-before">修正前（Before） フォルダZIP</div>', unsafe_allow_html=True)
-        st.file_uploader("Before（ZIP）を選択", type=["zip"], key="zip_before")
-    with right:
-        st.markdown('<div class="label-after">修正後（After） フォルダZIP</div>', unsafe_allow_html=True)
-        st.file_uploader("After（ZIP）を選択", type=["zip"], key="zip_after")
+if "results_two" not in st.session_state:
+    st.session_state.results_two = []
+if "results_three" not in st.session_state:
+    st.session_state.results_three = []
+if "preview_file" not in st.session_state:
+    st.session_state.preview_file = None
+if "run_two" not in st.session_state:
+    st.session_state.run_two = False
+if "run_three" not in st.session_state:
+    st.session_state.run_three = False
 
-    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
+tab_two, tab_three = st.tabs(["📄 2ファイル比較（1:1固定）", "📚 3ファイル比較（1対2）"])
 
-# -------------------------------
-# 📚 複数PDF 1:1 比較（= Before1 vs After2 の機能そのまま）
-# -------------------------------
-with tab3:
+with tab_two:
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="label-before">修正前（Before1） PDF</div>', unsafe_allow_html=True)
-        before1 = st.file_uploader("Before1 を選択", type=["pdf"], key="t3_before1")
+        st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>', unsafe_allow_html=True)
+        before_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="before_two", label_visibility="collapsed")
     with c2:
-        st.markdown('<div class="label-after">修正後（After1） PDF</div>', unsafe_allow_html=True)
-        after1 = st.file_uploader("After1 を選択", type=["pdf"], key="t3_after1")
+        st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
+        after_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="after_two", label_visibility="collapsed")
 
-    st.markdown('<div class="label-after">修正後（After2） PDF</div>', unsafe_allow_html=True)
-    after2 = st.file_uploader("After2 を選択", type=["pdf"], key="t3_after2")
+    if before_files and after_files and st.button("比較を開始（1:1）", key="btn_two"):
+        st.session_state.run_two = True
 
-    run_3 = st.button("差分を実行（複数PDF 1:1）", type="primary", use_container_width=True)
+    if st.session_state.run_two:
+        st.session_state.results_two.clear()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                b_paths, a_paths = [], []
+                for f in before_files:
+                    p = os.path.join(tmpdir, f"b_{f.name}"); save_uploaded_to(p, f); b_paths.append(p)
+                for f in after_files:
+                    p = os.path.join(tmpdir, f"a_{f.name}"); save_uploaded_to(p, f); a_paths.append(p)
+                b_paths.sort(key=lambda p: os.path.basename(p).lower())
+                a_paths.sort(key=lambda p: os.path.basename(p).lower())
 
-    if run_3 and before1 and after1 and after2:
-        with st.spinner("差分生成中…"):
-            # Before1 vs After1、Before1 vs After2 をそれぞれ作る（従来機能）
-            pdf_b1_a1 = generate_diff_bytes(before1.read(), after1.read(), dpi=dpi, whiten=0, page_mode="min")
-            pdf_b1_a2 = generate_diff_bytes(before1.read(), after2.read(), dpi=dpi, whiten=0, page_mode="min")
-            previews = _previews_from_pdf_bytes(pdf_b1_a1) + _previews_from_pdf_bytes(pdf_b1_a2)
+                total = min(len(b_paths), len(a_paths))
+                if total == 0:
+                    st.info("比較対象がありません。")
+                else:
+                    prog = st.progress(0)
+                    status = st.empty()
+                    for i in range(total):
+                        b, a = b_paths[i], a_paths[i]
+                        bdisp = safe_base(os.path.basename(b).split("b_", 1)[-1])
+                        adisp = safe_base(os.path.basename(a).split("a_", 1)[-1])
+                        out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
+                        out_path = os.path.join(tmpdir, out_name)
+                        status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
+                        generate_diff(b, a, out_path, dpi=dpi)
+                        with open(out_path, "rb") as fr:
+                            st.session_state.results_two.append((out_name, fr.read()))
+                        prog.progress(int((i+1)/total*100))
+                    status.write("✅ 比較が完了しました。")
+            except Exception as e:
+                st.error(f"エラー: {e}")
+        st.session_state.run_two = False
 
-        st.markdown("#### プレビュー（幅1500px内）")
-        st.markdown('<div class="preview-wrap">', unsafe_allow_html=True)
-        for png in previews:
-            st.image(png, use_column_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.results_two:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示")
+        for name, data in st.session_state.results_two:
+            c1, c2 = st.columns([0.8, 0.2])
+            with c1:
+                if st.button(f"👁 {name}", key=f"preview_two_{name}"):
+                    st.session_state.preview_file = (name, data)
+            with c2:
+                st.download_button("⬇️ DL", data=data, file_name=name, mime="application/pdf", key=f"dl_two_{name}")
 
-        st.divider()
-        st.markdown("#### ダウンロード")
-        col_a1, col_a2 = st.columns(2)
-        with col_a1:
-            st.download_button(
-                "B1_vs_A1_diff.pdf をDL",
-                data=pdf_b1_a1,
-                file_name=f"B1_vs_A1_{today_tag}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-        with col_a2:
-            st.download_button(
-                "B1_vs_A2_diff.pdf をDL",
-                data=pdf_b1_a2,
-                file_name=f"B1_vs_A2_{today_tag}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_two:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to1_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
-        # ZIP一括（従来どおり）
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(f"B1_vs_A1_{today_tag}.pdf", pdf_b1_a1)
-            zf.writestr(f"B1_vs_A2_{today_tag}.pdf", pdf_b1_a2)
-        zip_buf.seek(0)
-        st.download_button(
-            "ZIP一括DL：B1vsA1A2.zip",
-            data=zip_buf,
-            file_name=f"B1vsA1A2_{today_tag}.zip",
-            mime="application/zip",
-            use_container_width=True
-        )
+with tab_three:
+    before_file = st.file_uploader("Before 側PDF（1つ）", type=["pdf"], key="before_three")
+    after_files = st.file_uploader("After 側PDF（2つ）", type=["pdf"], accept_multiple_files=True, key="after_three")
 
-    st.markdown('<div class="footer">© genericBM (OpenAI + mmMIG)</div>', unsafe_allow_html=True)
+    if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
+        st.session_state.run_three = True
+
+    if st.session_state.run_three:
+        st.session_state.results_three.clear()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                before_path = os.path.join(tmpdir, "before.pdf")
+                save_uploaded_to(before_path, before_file)
+                bdisp = safe_base(before_file.name)
+
+                prog = st.progress(0)
+                status = st.empty()
+                total = 2
+                for i, a_file in enumerate(after_files, start=1):
+                    a_path = os.path.join(tmpdir, f"after_{i}.pdf")
+                    save_uploaded_to(a_path, a_file)
+                    adisp = safe_base(a_file.name)
+                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
+                    out_tmp  = os.path.join(tmpdir, out_name)
+                    status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
+                    generate_diff(before_path, a_path, out_tmp, dpi=dpi)
+                    with open(out_tmp, "rb") as fr:
+                        st.session_state.results_three.append((out_name, fr.read()))
+                    prog.progress(int(i/total*100))
+                status.write("✅ 比較が完了しました。")
+            except Exception as e:
+                st.error(f"エラー: {e}")
+        st.session_state.run_three = False
+
+    if st.session_state.results_three:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示")
+        for name, data in st.session_state.results_three:
+            c1, c2 = st.columns([0.8, 0.2])
+            with c1:
+                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+                    st.session_state.preview_file = (name, data)
+            with c2:
+                st.download_button("⬇️ DL", data=data, file_name=name, mime="application/pdf", key=f"dl_three_{name}")
+
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_three:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
+
+if st.session_state.preview_file:
+    name, data = st.session_state.preview_file
+    st.markdown("---")
+    show_pdf_inline(name, data)
+
+st.markdown("---")
+st.markdown(
+    "<div style='text-align:center; font-size:0.85em; color:gray;'>"
+    "© genericBM (OpenAI + mmMIG)"
+    "</div>",
+    unsafe_allow_html=True
+)
