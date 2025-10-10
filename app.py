@@ -170,8 +170,12 @@ with tab_two:
         st.download_button("📥 ZIP一括DL", out_mem.getvalue(), file_name=zip_name, mime="application/zip")
 
 with tab_three:
-    before_file = st.file_uploader("Before 側PDF（1つ）", type=["pdf"], key="before_three")
-    after_files = st.file_uploader("After 側PDF（2つ）", type=["pdf"], accept_multiple_files=True, key="after_three")
+    # ▼ 1:1タブと同じスタイルでラベル表示（色=紫/緑、太字=600）
+    st.markdown(f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（1つ）</div>', unsafe_allow_html=True)
+    before_file = st.file_uploader("", type=["pdf"], key="before_three", label_visibility="collapsed")
+
+    st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600; margin-top:16px;">After 側PDF（2つ）</div>', unsafe_allow_html=True)
+    after_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="after_three", label_visibility="collapsed")
 
     if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
         st.session_state.run_three = True
