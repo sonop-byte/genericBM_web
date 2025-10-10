@@ -314,26 +314,22 @@ with tab_three:
                 st.error(f"エラー: {e}")
         st.session_state.run_three = False
 
-if st.session_state.results_three:
-    st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示（複数可）")
-    for name, data in st.session_state.results_three:
-        c1, c2 = st.columns([0.8, 0.2])
-        with c1:
-            if st.button(f"👁 {name}", key=f"preview_three_{name}"):
-                if not any(n == name for n, _ in st.session_state.preview_files_three):
-                    st.session_state.preview_files_three.append((name, data))
-        with c2:
-            st.download_button(
-                "⬇️ DL", data=data, file_name=name,
-                mime="application/pdf", key=f"dl_three_{name}"
-            )
+    if st.session_state.results_three:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示（複数可）")
+        for name, data in st.session_state.results_three:
+            c1, c2 = st.columns([0.8, 0.2])
+            with c1:
+                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
+                    if not any(n == name for n, _ in st.session_state.preview_files_three):
+                        st.session_state.preview_files_three.append((name, data))
+            with c2:
+                st.download_button(
+                    "⬇️ DL", data=data, file_name=name,
+                    mime="application/pdf", key=f"dl_three_{name}"
+                )
 
-    st.subheader("💾 ZIP一括ダウンロード")
-    # （ZIP生成処理が続く）
-
-
-
+        st.subheader("💾 ZIP一括ダウンロード")
         out_mem = io.BytesIO()
         with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
             for name, data in st.session_state.results_three:
@@ -344,11 +340,12 @@ if st.session_state.results_three:
             file_name=zip_name, mime="application/zip"
         )
 
-    # ▼ 追加された複数プレビューを順に表示
-    if st.session_state.preview_files_three:
-        st.markdown("---")
-        for name, data in st.session_state.preview_files_three:
-            show_pdf_inline(name, data)
+        # ▼ 複数プレビューの描画を追加
+        if st.session_state.preview_files_three:
+            st.markdown("---")
+            for name, data in st.session_state.preview_files_three:
+                show_pdf_inline(name, data)
+
 
 # ====== 下部プレビュー（共通） ======
 if st.session_state.preview_file:
