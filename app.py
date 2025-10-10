@@ -62,63 +62,55 @@ def add_date_suffix(filename: str) -> str:
 def show_pdf_inline(name: str, data_bytes: bytes):
     import fitz
     from PIL import Image as PILImage
-    import streamlit.components.v1 as components
     import base64, io
+    import streamlit as st  # ← markdown で直描画
 
     PREVIEW_MAX_PAGES = 3
-    PREVIEW_DPI = 144  # 実寸レンダリング用のDPI
+    PREVIEW_DPI = 144  # 実寸表示の基準DPI（等倍で描画）
 
+    # --- PDF → PNG 実寸レンダリング ---
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
-
-    page_infos = []
+    pages = []  # [(w,h,b64), ...]
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        img = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        page_infos.append((pix.width, pix.height, b64))
+        pix  = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        img  = PILImage.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        buf  = io.BytesIO(); img.save(buf, format="PNG")
+        b64  = base64.b64encode(buf.getvalue()).decode("ascii")
+        pages.append((pix.width, pix.height, b64))
     doc.close()
 
-    if not page_infos:
-        html = f"""
-        <div style="padding:10px;border:1px solid #ccc;border-radius:8px;">
-          <div style="font-weight:600;">👁 プレビュー：{name}</div>
-          <div>プレビューできるページがありません。</div>
-        </div>
-        """
-        components.html(html, height=200, scrolling=True)
+    if not pages:
+        st.markdown(
+            f"""
+            <div style="padding:10px;border:1px solid #ccc;border-radius:8px;">
+              <div style="font-weight:600;">👁 プレビュー：{name}</div>
+              <div>プレビューできるページがありません。</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         return
 
-    # --- ページごとに実寸（px）で描画 ---
-    html_parts = [f'<div style="font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>']
-    total_height = 40
-    for idx, (w, h, b64) in enumerate(page_infos, start=1):
-        html_parts.append(
+    # --- ページごとに“実寸”で個別表示（スクロール枠＝ページ幅に一致） ---
+    parts = [f'<div style="font-weight:600;margin-bottom:6px;text-align:center;">👁 プレビュー：{name}</div>']
+    for idx, (w, h, b64) in enumerate(pages, start=1):
+        # 横幅 = w px に固定。画像は width=w / height=h の等倍。枠内が縦スクロール。
+        parts.append(
             f"""
-            <div style="width:{w}px;margin:0 auto 24px auto;border:1px solid #ddd;border-radius:8px;padding:8px;">
-                <div style="font-size:0.9em;color:#666;text-align:right;margin-bottom:4px;">Page {idx}</div>
-                <img src='data:image/png;base64,{b64}' width='{w}' height='{h}'
-                     style='display:block;margin:0 auto;border:1px solid #ccc;
-                            box-shadow:0 0 6px rgba(0,0,0,0.08);'/>
+            <div style="width:{w}px; margin:0 auto 24px auto; border:1px solid #ddd; border-radius:8px; box-sizing:border-box;">
+              <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">Page {idx}</div>
+              <div style="width:{w}px; max-height:85vh; overflow:auto; margin:8px auto 12px auto;">
+                  <img src="data:image/png;base64,{b64}" width="{w}" height="{h}"
+                       style="display:block; margin:0 auto;" />
+              </div>
             </div>
             """
         )
-        total_height += h + 60  # ページ間余白を加算
 
-    # 全体の高さを見積もり（上限 3000px）
-    total_height = min(total_height, 3000)
-
-    html = f"""
-    <div style="text-align:center;">
-        {''.join(html_parts)}
-    </div>
-    """
-    components.html(html, height=total_height, scrolling=True)
+    st.markdown("".join(parts), unsafe_allow_html=True)
 
 
 if "results_two" not in st.session_state:
