@@ -128,6 +128,44 @@ def show_pdf_inline(name: str, data_bytes: bytes):
             """
         )
 
+    # ✅ ここがエラー箇所 — インデントを揃える
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+        )
+        return
+
+    # --- ページごとに70%スケールで中央表示 ---
+    html_parts = [f'<div style="font-weight:600;margin-bottom:6px;text-align:center;">👁 プレビュー：{name}</div>']
+    for idx, (w, h, b64) in enumerate(pages, start=1):
+        scaled_w = int(w * SCALE)
+        scaled_h = int(h * SCALE)
+        html_parts.append(
+            f"""
+            <div style="
+                width:{scaled_w}px;
+                margin:0 auto 24px auto;
+                border:1px solid #ddd;
+                border-radius:8px;
+                box-sizing:border-box;
+                background:#fafafa;
+            ">
+              <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
+                Page {idx}（{int(SCALE*100)}%表示）
+              </div>
+              <div style="
+                  width:{scaled_w}px;
+                  max-height:85vh;
+                  overflow:auto;
+                  margin:8px auto 12px auto;
+              ">
+                <img src="data:image/png;base64,{b64}"
+                     width="{scaled_w}" height="{scaled_h}"
+                     style="display:block;margin:0 auto;" />
+              </div>
+            </div>
+            """
+        )
+
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
         )
