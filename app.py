@@ -364,7 +364,7 @@ with tab_three:
                 st.error(f"エラー: {e}")
         st.session_state.run_three = False
 
-    # ▼ 1対2：生成済み一覧・DL・複数プレビュー
+# ▼ 1対2：生成済み一覧・DL・複数プレビュー
 if st.session_state.results_three:
     render_results_section(
         st.session_state.results_three,
@@ -373,23 +373,11 @@ if st.session_state.results_three:
         dl_key_prefix="dl_three"
     )
 
-    # ZIP 一括DL
-    st.subheader("💾 ZIP一括ダウンロード")
-    out_mem = io.BytesIO()
-    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, data in results:
-            zf.writestr(name, data)
-    st.download_button(
-        "📥 ZIP一括DL", out_mem.getvalue(),
-        file_name=f"{zip_prefix}_{datetime.now().strftime('%Y%m%d')}.zip",
-        mime="application/zip"
-    )
-
-
-        if st.session_state.preview_files_three:
-            st.markdown("---")
-            for name, data in st.session_state.preview_files_three:
-                show_pdf_inline(name, data)
+    # プレビュー表示（複数）
+    if st.session_state.preview_files_three:
+        st.markdown("---")
+        for name, data in st.session_state.preview_files_three:
+            show_pdf_inline(name, data)
 
 # ====== 後方互換の単一プレビュー（不要なら削除可） ======
 if (not st.session_state.get("preview_files_two")) and (not st.session_state.get("preview_files_three")):
