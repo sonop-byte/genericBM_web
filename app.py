@@ -168,20 +168,32 @@ with tab_two:
         after_files = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="after_two",
                                        label_visibility="collapsed")
 
-    if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            st.session_state.results_two.clear()
-            for b, a in zip(sorted(before_files, key=lambda f: f.name),
-                            sorted(after_files, key=lambda f: f.name)):
-                b_path = os.path.join(tmpdir, b.name)
-                a_path = os.path.join(tmpdir, a.name)
+if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
+    st.session_state.results_two.clear()
+    # 新規生成時に既存プレビューを空にする場合は下行を残す／維持したいなら消す
+    # st.session_state.preview_files_two = []
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            # ファイルを保存＆ソート
+            b_sorted = sorted(before_files, key=lambda f: f.name)
+            a_sorted = sorted(after_files, key=lambda f: f.name)
+
+            for b, a in zip(b_sorted, a_sorted):
+                b_path = os.path.join(tmpdir, f"b_{b.name}")
+                a_path = os.path.join(tmpdir, f"a_{a.name}")
                 save_uploaded_to(b_path, b)
                 save_uploaded_to(a_path, a)
+
                 out_name = add_date_suffix(f"{safe_base(b.name)}vs{safe_base(a.name)}.pdf")
                 out_path = os.path.join(tmpdir, out_name)
                 generate_diff(b_path, a_path, out_path, dpi=dpi)
+
                 with open(out_path, "rb") as fr:
                     st.session_state.results_two.append((out_name, fr.read()))
+        except Exception as e:
+            st.error(f"エラー: {e}")
+
 
     if st.session_state.results_two:
         render_results_section(st.session_state.results_two, "preview_files_two", "genericBM_1to1", "dl_two")
