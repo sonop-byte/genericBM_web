@@ -308,7 +308,8 @@ with tab_two:
         st.session_state.run_two = False
 
 # ▼ 1対1：生成済み一覧・DL・複数プレビュー
-if st.session_state.results_two:
+- if st.session_state.results_two:
++ if (not st.session_state.run_two) and st.session_state.results_two:
     st.subheader("📄 生成済み差分PDF")
     st.caption("クリックでプレビュー表示（複数可）")
 
@@ -411,7 +412,8 @@ with tab_three:
         st.session_state.run_three = False
 
 # ▼ 1対2：生成済み一覧・DL・複数プレビュー
-if st.session_state.results_three:
+- if st.session_state.results_three:
++ if (not st.session_state.run_three) and st.session_state.results_three:
     st.subheader("📄 生成済み差分PDF")
     st.caption("クリックでプレビュー表示（複数可）")
 
