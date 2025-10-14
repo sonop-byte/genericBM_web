@@ -385,6 +385,19 @@ with tab_three:
         st.session_state.results_three.clear()
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
+                # --- 入力の健全性チェック（None を弾く） ---
+                if before_file is None:
+                    st.error("Before 側PDFが選択されていません。もう一度選択してください。")
+                    st.session_state.run_three = False
+                    st.stop()
+
+                valid_after = [f for f in (after_files or []) if f is not None]
+                if len(valid_after) < 2:
+                    st.error("After 側PDFは2つ必要です。もう一度選択してください。")
+                    st.session_state.run_three = False
+                    st.stop()
+
+                # --- 生成処理 ---
                 before_path = os.path.join(tmpdir, "before.pdf")
                 save_uploaded_to(before_path, before_file)
                 bdisp = safe_base(before_file.name)
@@ -392,10 +405,12 @@ with tab_three:
                 prog = st.progress(0)
                 status = st.empty()
                 total = 2
-                for i, a_file in enumerate(after_files, start=1):
+
+                for i, a_file in enumerate(valid_after[:2], start=1):
                     a_path = os.path.join(tmpdir, f"after_{i}.pdf")
                     save_uploaded_to(a_path, a_file)
                     adisp = safe_base(a_file.name)
+
                     out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
                     out_tmp = os.path.join(tmpdir, out_name)
 
@@ -405,9 +420,12 @@ with tab_three:
                     with open(out_tmp, "rb") as fr:
                         st.session_state.results_three.append((out_name, fr.read()))
                     prog.progress(int(i / total * 100))
+
                 status.write("✅ 比較が完了しました。")
+
             except Exception as e:
                 st.error(f"エラー: {e}")
+
         st.session_state.run_three = False
 
 # ▼ 1対2：生成済み一覧・DL・複数プレビュー
