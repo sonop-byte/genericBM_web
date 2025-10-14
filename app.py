@@ -356,30 +356,57 @@ if (not st.session_state.run_two) and st.session_state.results_two:
 # -------------------------------
 # 📚 3ファイル比較（1対2）
 # -------------------------------
-with tab_three:
-    st.markdown(
-        f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（1つ）</div>',
-        unsafe_allow_html=True
-    )
-    before_file = st.file_uploader(
-        "", type=["pdf"], key="before_three", label_visibility="collapsed"
+    # --- 📚 3ファイル比較（1対2）ボタンの表示条件 ---
+    can_run_three = (
+        before_file is not None
+        and after_files is not None
+        and len([f for f in after_files if f is not None]) == 2
     )
 
-    st.markdown(
-        f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600; margin-top:16px;">After 側PDF（2つ）</div>',
-        unsafe_allow_html=True
-    )
-    after_files = st.file_uploader(
-        "", type=["pdf"], accept_multiple_files=True,
-        key="after_three", label_visibility="collapsed"
-    )
-
-    if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
-        # ▼ここを追加
+    # 🔁 比較開始ボタン：揃ったときのみ表示
+    if can_run_three and st.button("比較を開始（1対2）", key="btn_three"):
+        # 前回の結果をクリア
         st.session_state.results_three.clear()
         st.session_state.preview_files_three.clear()
+        st.session_state.run_three = True
 
-    st.session_state.run_three = True
+    # --- 📚 3ファイル比較（1対2） 実行フェーズ ---
+    if st.session_state.run_three:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                valid_after = [f for f in (after_files or []) if f is not None]
+                st.session_state.results_three.clear()
+
+                before_path = os.path.join(tmpdir, "before.pdf")
+                save_uploaded_to(before_path, before_file)
+                bdisp = safe_base(before_file.name)
+
+                prog = st.progress(0)
+                status = st.empty()
+                total = 2
+
+                for i, a_file in enumerate(valid_after[:2], start=1):
+                    a_path = os.path.join(tmpdir, f"after_{i}.pdf")
+                    save_uploaded_to(a_path, a_file)
+                    adisp = safe_base(a_file.name)
+
+                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
+                    out_tmp = os.path.join(tmpdir, out_name)
+
+                    status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
+                    generate_diff(before_path, a_path, out_tmp, dpi=dpi)
+
+                    with open(out_tmp, "rb") as fr:
+                        st.session_state.results_three.append((out_name, fr.read()))
+                    prog.progress(int(i / total * 100))
+
+                status.write("✅ 比較が完了しました。")
+
+            except Exception as e:
+                st.error(f"エラー: {e}")
+
+        st.session_state.run_three = False
+
 
     if st.session_state.run_three:
         st.session_state.results_three.clear()
