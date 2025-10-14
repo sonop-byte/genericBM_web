@@ -305,11 +305,11 @@ if st.session_state.results_two:
         mime="application/zip"
     )
 
-        # 追加されたプレビューを順に表示
-        if st.session_state.preview_files_two:
-            st.markdown("---")
-            for name, data in st.session_state.preview_files_two:
-                show_pdf_inline(name, data)
+    # プレビュー表示（複数）
+    if st.session_state[preview_state_key]:
+        st.markdown("---")
+        for name, data in st.session_state[preview_state_key]:
+            show_pdf_inline(name, data)
 
 # -------------------------------
 # 📚 3ファイル比較（1対2）
