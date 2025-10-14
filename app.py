@@ -130,12 +130,6 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
 
 # ====== 結果表示・DL・プレビュー管理 ======
 def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
-    """
-    results: [(name, bytes)]
-    preview_state_key: 'preview_files_two' or 'preview_files_three'
-    zip_prefix: 'genericBM_1to1' / 'genericBM_1to2'
-    dl_key_prefix: 'dl_two' / 'dl_three'
-    """
     if not results:
         return
 
@@ -151,14 +145,12 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
                 if not any(n == name for n, _ in st.session_state[preview_state_key]):
                     st.session_state[preview_state_key].append((name, data))
 
-        # 右：DL + 閉じるボタン
+        # 右：DL + 閉じる
         with col_r:
             c_dl, c_close = st.columns(2)
             with c_dl:
-                st.download_button(
-                    "⬇️ DL", data=data, file_name=name,
-                    mime="application/pdf", key=f"{dl_key_prefix}_{name}"
-                )
+                st.download_button("⬇️ DL", data=data, file_name=name,
+                                   mime="application/pdf", key=f"{dl_key_prefix}_{name}")
             with c_close:
                 if any(n == name for n, _ in st.session_state[preview_state_key]):
                     if st.button("❌ 閉じる", key=f"close_{preview_state_key}_{name}"):
@@ -166,17 +158,7 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
                             (n, d) for n, d in st.session_state[preview_state_key] if n != name
                         ]
 
-    # ZIP 一括DL
-    st.subheader("💾 ZIP一括ダウンロード")
-    out_mem = io.BytesIO()
-    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, data in results:
-            zf.writestr(name, data)
-    st.download_button(
-        "📥 ZIP一括DL", out_mem.getvalue(),
-        file_name=f"{zip_prefix}_{datetime.now().strftime('%Y%m%d')}.zip",
-        mime="application/zip"
-    )
+    # …（ZIP一括DL）
 
     # 🧹まとめて消す
     col_clear, _ = st.columns([0.25, 0.75])
@@ -184,12 +166,11 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
         if st.button("🧹 プレビューをすべてクリア", key=f"clear_{preview_state_key}"):
             st.session_state[preview_state_key] = []
 
-    # プレビュー表示（複数）
+    # プレビュー描画
     if st.session_state[preview_state_key]:
         st.markdown("---")
         for name, data in st.session_state[preview_state_key]:
             show_pdf_inline(name, data)
-
 
         return
 
@@ -303,23 +284,13 @@ with tab_two:
         st.session_state.run_two = False
 
     # ▼ 1対1：生成済み一覧・DL・複数プレビュー
-    if st.session_state.results_two:
-        st.subheader("📄 生成済み差分PDF")
-        st.caption("クリックでプレビュー表示（複数可）")
-
-        for name, data in st.session_state.results_two:
-            col_l, col_r = st.columns([0.8, 0.2])
-
-            with col_l:
-                if st.button(f"👁 {name}", key=f"preview_two_{name}"):
-                    if not any(n == name for n, _ in st.session_state.preview_files_two):
-                        st.session_state.preview_files_two.append((name, data))
-
-            with col_r:
-                st.download_button(
-                    "⬇️ DL", data=data, file_name=name,
-                    mime="application/pdf", key=f"dl_two_{name}"
-                )
+if st.session_state.results_two:
+    render_results_section(
+        st.session_state.results_two,
+        preview_state_key="preview_files_two",
+        zip_prefix="genericBM_1to1",
+        dl_key_prefix="dl_two"
+    )
 
         st.subheader("💾 ZIP一括ダウンロード")
         out_mem = io.BytesIO()
@@ -392,23 +363,13 @@ with tab_three:
         st.session_state.run_three = False
 
     # ▼ 1対2：生成済み一覧・DL・複数プレビュー
-    if st.session_state.results_three:
-        st.subheader("📄 生成済み差分PDF")
-        st.caption("クリックでプレビュー表示（複数可）")
-
-        for name, data in st.session_state.results_three:
-            col_l, col_r = st.columns([0.8, 0.2])
-
-            with col_l:
-                if st.button(f"👁 {name}", key=f"preview_three_{name}"):
-                    if not any(n == name for n, _ in st.session_state.preview_files_three):
-                        st.session_state.preview_files_three.append((name, data))
-
-            with col_r:
-                st.download_button(
-                    "⬇️ DL", data=data, file_name=name,
-                    mime="application/pdf", key=f"dl_three_{name}"
-                )
+if st.session_state.results_three:
+    render_results_section(
+        st.session_state.results_three,
+        preview_state_key="preview_files_three",
+        zip_prefix="genericBM_1to2",
+        dl_key_prefix="dl_three"
+    )
 
         st.subheader("💾 ZIP一括ダウンロード")
         out_mem = io.BytesIO()
