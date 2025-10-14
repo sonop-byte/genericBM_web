@@ -366,8 +366,19 @@ if (not st.session_state.get("preview_files_two")) and (not st.session_state.get
 # ===== フッター =====
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center; font-size:0.85em; color:gray;'>"
-    "© genericBM (OpenAI + mmMIG)"
-    "</div>",
+    """
+    <div style='text-align:center; font-size:0.85em; color:gray;'>© genericBM (OpenAI + mmMIG)</div>
+    """,
+    unsafe_allow_html=True
+)
+
+# 🔒 セキュリティポリシー表示
+st.markdown(
+    """
+    <div style='text-align:center; font-size:0.85em; color:gray; line-height:1.6; margin-top:12px;'>
+        🔒 このアプリではアップロードされたPDFを保存・共有・AI学習に利用することはありません。<br>
+        すべてのデータは処理後に自動的に削除され、30分以内に完全に消去されます。
+    </div>
+    """,
     unsafe_allow_html=True
 )
