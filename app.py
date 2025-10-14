@@ -345,10 +345,10 @@ with tab_three:
 
     # 比較開始（1対2）：押したら前回結果をクリア → 実行フラグON → すぐ再実行
     if can_run_three and st.button("比較を開始（1対2）", key="btn_three"):
-    st.session_state.results_three.clear()
-    st.session_state.preview_files_three.clear()
-    st.session_state.run_three = True
-    st.rerun()
+        st.session_state.results_three.clear()
+        st.session_state.preview_files_three.clear()
+        st.session_state.run_three = True
+        st.rerun()  # 押下直後に前回の📄/💾/プレビューが消える
 
 
     # 実行フェーズ（1対2）
