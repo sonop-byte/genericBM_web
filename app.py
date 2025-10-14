@@ -172,6 +172,7 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
         for name, data in st.session_state[preview_state_key]:
             show_pdf_inline(name, data)
 
+
         return
 
     html_parts = [
