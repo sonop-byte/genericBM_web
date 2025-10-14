@@ -77,10 +77,14 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
     PREVIEW_DPI = 144
     SCALE = 0.7  # 70%
 
+    import base64, io
+    from PIL import Image
+    import fitz
+
     doc = fitz.open(stream=data_bytes, filetype="pdf")
     n_pages = min(PREVIEW_MAX_PAGES, doc.page_count)
 
-    pages = []  # [(w, h, b64), ...]
+    pages = []
     for i in range(n_pages):
         page = doc.load_page(i)
         zoom = PREVIEW_DPI / 72.0
@@ -102,7 +106,7 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             """,
             unsafe_allow_html=True
         )
-        return  # 👈 ここを忘れずに！
+        return
 
     html_parts = [
         f'<div style="text-align:center;font-weight:600;margin-bottom:6px;">👁 プレビュー：{name}</div>'
@@ -114,9 +118,7 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             f"""
 <div style="display:flex;justify-content:center;margin-bottom:24px;">
   <div style="width:{sw}px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;background:#fafafa;">
-    <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">
-      Page {idx}（{int(SCALE*100)}%表示）
-    </div>
+    <div style="font-size:0.9em;color:#666;text-align:right;margin:6px 8px 0 0;">Page {idx}（{int(SCALE*100)}%表示）</div>
     <div style="width:{sw}px;max-height:85vh;overflow:auto;margin:8px auto 12px auto;">
       <img src="data:image/png;base64,{b64}" width="{sw}" height="{sh}" style="display:block;margin:0 auto;" />
     </div>
@@ -125,11 +127,17 @@ def show_pdf_inline(name: str, data_bytes: bytes) -> None:
             """
         )
 
-    st.markdown("".join(html_parts), unsafe_allow_html=True)  # ✅ これが関数の中に入っていることが重要
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
-# ====== 結果表示・DL・プレビュー管理 ======
+# ====== 生成済み一覧／DL／閉じる＆全消し／プレビュー描画 ======
 def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_key_prefix: str):
+    """
+    results: [(name, bytes)]
+    preview_state_key: 'preview_files_two' or 'preview_files_three'
+    zip_prefix: 'genericBM_1to1' / 'genericBM_1to2'
+    dl_key_prefix: 'dl_two' / 'dl_three'
+    """
     if not results:
         return
 
@@ -145,12 +153,14 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
                 if not any(n == name for n, _ in st.session_state[preview_state_key]):
                     st.session_state[preview_state_key].append((name, data))
 
-        # 右：DL + 閉じる
+        # 右：DL + 個別閉じる
         with col_r:
             c_dl, c_close = st.columns(2)
             with c_dl:
-                st.download_button("⬇️ DL", data=data, file_name=name,
-                                   mime="application/pdf", key=f"{dl_key_prefix}_{name}")
+                st.download_button(
+                    "⬇️ DL", data=data, file_name=name,
+                    mime="application/pdf", key=f"{dl_key_prefix}_{name}"
+                )
             with c_close:
                 if any(n == name for n, _ in st.session_state[preview_state_key]):
                     if st.button("❌ 閉じる", key=f"close_{preview_state_key}_{name}"):
@@ -158,7 +168,17 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
                             (n, d) for n, d in st.session_state[preview_state_key] if n != name
                         ]
 
-    # …（ZIP一括DL）
+    # ZIP 一括DL
+    st.subheader("💾 ZIP一括ダウンロード")
+    out_mem = io.BytesIO()
+    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in results:
+            zf.writestr(name, data)
+    st.download_button(
+        "📥 ZIP一括DL", out_mem.getvalue(),
+        file_name=f"{zip_prefix}_{datetime.now().strftime('%Y%m%d')}.zip",
+        mime="application/zip"
+    )
 
     # 🧹まとめて消す
     col_clear, _ = st.columns([0.25, 0.75])
@@ -166,12 +186,11 @@ def render_results_section(results, preview_state_key: str, zip_prefix: str, dl_
         if st.button("🧹 プレビューをすべてクリア", key=f"clear_{preview_state_key}"):
             st.session_state[preview_state_key] = []
 
-    # プレビュー描画
+    # 追加済みプレビューを描画
     if st.session_state[preview_state_key]:
         st.markdown("---")
         for name, data in st.session_state[preview_state_key]:
             show_pdf_inline(name, data)
-
 
         return
 
