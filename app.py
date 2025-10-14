@@ -245,7 +245,8 @@ with tab_two:
             f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（複数可）</div>',
             unsafe_allow_html=True
         )
-        before_files = st.file_uploader(
+        # ここを before_files_two に
+        before_files_two = st.file_uploader(
             "", type=["pdf"], accept_multiple_files=True,
             key="before_two", label_visibility="collapsed"
         )
@@ -254,32 +255,34 @@ with tab_two:
             f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>',
             unsafe_allow_html=True
         )
-        after_files = st.file_uploader(
+        # ここを after_files_two に
+        after_files_two = st.file_uploader(
             "", type=["pdf"], accept_multiple_files=True,
             key="after_two", label_visibility="collapsed"
         )
 
-    if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
-        # ▼ここを追加
+    # ボタン判定 & 生成処理も、以後は before_files_two/after_files_two を使う
+    if before_files_two and after_files_two and st.button("比較を開始（1対1）", key="btn_two"):
         st.session_state.results_two.clear()
         st.session_state.preview_files_two.clear()
-
         st.session_state.run_two = True
-
 
     if st.session_state.run_two:
         st.session_state.results_two.clear()
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
                 b_paths, a_paths = [], []
-                for f in before_files:
+                for f in before_files_two:
                     p = os.path.join(tmpdir, f"b_{f.name}")
                     save_uploaded_to(p, f)
                     b_paths.append(p)
-                for f in after_files:
+                for f in after_files_two:
                     p = os.path.join(tmpdir, f"a_{f.name}")
                     save_uploaded_to(p, f)
                     a_paths.append(p)
+                # （以下は既存のまま）
+                ...
+
 
                 b_paths.sort(key=lambda p: os.path.basename(p).lower())
                 a_paths.sort(key=lambda p: os.path.basename(p).lower())
@@ -356,31 +359,54 @@ if (not st.session_state.run_two) and st.session_state.results_two:
 # -------------------------------
 # 📚 3ファイル比較（1対2）
 # -------------------------------
-    # --- 📚 3ファイル比較（1対2）ボタンの表示条件 ---
-    can_run_three = (
-        before_file is not None
-        and after_files is not None
-        and len([f for f in after_files if f is not None]) == 2
+# -------------------------------
+# 📚 3ファイル比較（1対2）
+# -------------------------------
+with tab_three:
+    # 見出し＆アップローダ
+    st.markdown(
+        f'<div style="color:{BEFORE_LABEL_COLOR}; font-weight:600;">Before 側PDF（1つ）</div>',
+        unsafe_allow_html=True
+    )
+    before_file_three = st.file_uploader(
+        "", type=["pdf"], key="before_three", label_visibility="collapsed"
     )
 
-    # 🔁 比較開始ボタン：揃ったときのみ表示
+    st.markdown(
+        f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600; margin-top:16px;">After 側PDF（2つ）</div>',
+        unsafe_allow_html=True
+    )
+    after_files_three = st.file_uploader(
+        "", type=["pdf"], accept_multiple_files=True,
+        key="after_three", label_visibility="collapsed"
+    )
+
+    # --- ボタンの表示条件（3つそろったときだけ） ---
+    can_run_three = (
+        before_file_three is not None
+        and after_files_three is not None
+        and len([f for f in after_files_three if f is not None]) == 2
+    )
+
+    # 🔁 比較開始（1対2）：押したら前回結果をクリアして実行
     if can_run_three and st.button("比較を開始（1対2）", key="btn_three"):
-        # 前回の結果をクリア
         st.session_state.results_three.clear()
         st.session_state.preview_files_three.clear()
         st.session_state.run_three = True
 
-    # --- 📚 3ファイル比較（1対2） 実行フェーズ ---
+    # --- 実行フェーズ ---
     if st.session_state.run_three:
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
-                valid_after = [f for f in (after_files or []) if f is not None]
+                valid_after = [f for f in (after_files_three or []) if f is not None]
                 st.session_state.results_three.clear()
 
+                # Before 保存
                 before_path = os.path.join(tmpdir, "before.pdf")
-                save_uploaded_to(before_path, before_file)
-                bdisp = safe_base(before_file.name)
+                save_uploaded_to(before_path, before_file_three)
+                bdisp = safe_base(before_file_three.name)
 
+                # 生成ループ
                 prog = st.progress(0)
                 status = st.empty()
                 total = 2
@@ -391,7 +417,7 @@ if (not st.session_state.run_two) and st.session_state.results_two:
                     adisp = safe_base(a_file.name)
 
                     out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
-                    out_tmp = os.path.join(tmpdir, out_name)
+                    out_tmp  = os.path.join(tmpdir, out_name)
 
                     status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
                     generate_diff(before_path, a_path, out_tmp, dpi=dpi)
@@ -401,102 +427,54 @@ if (not st.session_state.run_two) and st.session_state.results_two:
                     prog.progress(int(i / total * 100))
 
                 status.write("✅ 比較が完了しました。")
-
             except Exception as e:
                 st.error(f"エラー: {e}")
 
         st.session_state.run_three = False
 
+    # ▼ 1対2：生成済み一覧・DL・複数プレビュー（実行中は非表示）
+    if (not st.session_state.run_three) and st.session_state.results_three:
+        st.subheader("📄 生成済み差分PDF")
+        st.caption("クリックでプレビュー表示（複数可）")
 
-    if st.session_state.run_three:
-        st.session_state.results_three.clear()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                # --- 入力の健全性チェック（None を弾く） ---
-                if before_file is None:
-                    st.error("Before 側PDFが選択されていません。もう一度選択してください。")
-                    st.session_state.run_three = False
-                    st.stop()
+        for idx, (name, data) in enumerate(st.session_state.results_three):
+            col_l, col_r = st.columns([0.7, 0.3])
 
-                valid_after = [f for f in (after_files or []) if f is not None]
-                if len(valid_after) < 2:
-                    st.error("After 側PDFは2つ必要です。もう一度選択してください。")
-                    st.session_state.run_three = False
-                    st.stop()
+            # 一意キー（index + hash）
+            preview_key = f"preview_three_{idx}_{abs(hash(name))%100000000}"
+            dl_key      = f"dl_three_{idx}_{abs(hash(name))%100000000}"
+            close_key   = f"close_three_{idx}_{abs(hash(name))%100000000}"
 
-                # --- 生成処理 ---
-                before_path = os.path.join(tmpdir, "before.pdf")
-                save_uploaded_to(before_path, before_file)
-                bdisp = safe_base(before_file.name)
+            with col_l:
+                if st.button(f"👁 {name}", key=preview_key):
+                    if not any(n == name for n, _ in st.session_state.preview_files_three):
+                        st.session_state.preview_files_three.append((name, data))
 
-                prog = st.progress(0)
-                status = st.empty()
-                total = 2
+            with col_r:
+                c_dl, c_close = st.columns(2)
+                with c_dl:
+                    st.download_button("⬇️ DL", data=data, file_name=name,
+                                       mime="application/pdf", key=dl_key)
+                with c_close:
+                    if any(n == name for n, _ in st.session_state.preview_files_three):
+                        if st.button("❌ 閉じる", key=close_key):
+                            st.session_state.preview_files_three = [
+                                (n, d) for n, d in st.session_state.preview_files_three if n != name
+                            ]
 
-                for i, a_file in enumerate(valid_after[:2], start=1):
-                    a_path = os.path.join(tmpdir, f"after_{i}.pdf")
-                    save_uploaded_to(a_path, a_file)
-                    adisp = safe_base(a_file.name)
+        st.subheader("💾 ZIP一括ダウンロード")
+        out_mem = io.BytesIO()
+        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in st.session_state.results_three:
+                zf.writestr(name, data)
+        zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
+        st.download_button("📥 ZIP一括DL", out_mem.getvalue(),
+                           file_name=zip_name, mime="application/zip")
 
-                    out_name = add_date_suffix(f"{bdisp}vs{adisp}.pdf")
-                    out_tmp = os.path.join(tmpdir, out_name)
-
-                    status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
-                    generate_diff(before_path, a_path, out_tmp, dpi=dpi)
-
-                    with open(out_tmp, "rb") as fr:
-                        st.session_state.results_three.append((out_name, fr.read()))
-                    prog.progress(int(i / total * 100))
-
-                status.write("✅ 比較が完了しました。")
-
-            except Exception as e:
-                st.error(f"エラー: {e}")
-
-        st.session_state.run_three = False
-
-# ▼ 1対2：生成済み一覧・DL・複数プレビュー
-if (not st.session_state.run_three) and st.session_state.results_three:
-    st.subheader("📄 生成済み差分PDF")
-    st.caption("クリックでプレビュー表示（複数可）")
-
-    for idx, (name, data) in enumerate(st.session_state.results_three):
-        col_l, col_r = st.columns([0.7, 0.3])
-
-        preview_key = f"preview_three_{idx}_{abs(hash(name))%100000000}"
-        dl_key      = f"dl_three_{idx}_{abs(hash(name))%100000000}"
-        close_key   = f"close_three_{idx}_{abs(hash(name))%100000000}"
-
-        with col_l:
-            if st.button(f"👁 {name}", key=preview_key):
-                if not any(n == name for n, _ in st.session_state.preview_files_three):
-                    st.session_state.preview_files_three.append((name, data))
-
-        with col_r:
-            c_dl, c_close = st.columns(2)
-            with c_dl:
-                st.download_button("⬇️ DL", data=data, file_name=name,
-                                   mime="application/pdf", key=dl_key)
-            with c_close:
-                if any(n == name for n, _ in st.session_state.preview_files_three):
-                    if st.button("❌ 閉じる", key=close_key):
-                        st.session_state.preview_files_three = [
-                            (n, d) for n, d in st.session_state.preview_files_three if n != name
-                        ]
-
-    st.subheader("💾 ZIP一括ダウンロード")
-    out_mem = io.BytesIO()
-    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, data in st.session_state.results_three:
-            zf.writestr(name, data)
-    zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
-    st.download_button("📥 ZIP一括DL", out_mem.getvalue(),
-                       file_name=zip_name, mime="application/zip")
-
-    if st.session_state.preview_files_three:
-        st.markdown("---")
-        for name, data in st.session_state.preview_files_three:
-            show_pdf_inline(name, data)
+        if st.session_state.preview_files_three:
+            st.markdown("---")
+            for name, data in st.session_state.preview_files_three:
+                show_pdf_inline(name, data)
 
 
 # ====== 後方互換の単一プレビュー（不要なら削除可） ======
