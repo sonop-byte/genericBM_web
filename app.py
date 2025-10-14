@@ -260,7 +260,12 @@ with tab_two:
         )
 
     if before_files and after_files and st.button("比較を開始（1対1）", key="btn_two"):
+        # ▼ここを追加
+        st.session_state.results_two.clear()
+        st.session_state.preview_files_two.clear()
+
         st.session_state.run_two = True
+
 
     if st.session_state.run_two:
         st.session_state.results_two.clear()
@@ -370,7 +375,11 @@ with tab_three:
     )
 
     if before_file and after_files and len(after_files) == 2 and st.button("比較を開始（1対2）", key="btn_three"):
-        st.session_state.run_three = True
+        # ▼ここを追加
+        st.session_state.results_three.clear()
+        st.session_state.preview_files_three.clear()
+
+    st.session_state.run_three = True
 
     if st.session_state.run_three:
         st.session_state.results_three.clear()
