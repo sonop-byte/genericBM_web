@@ -372,16 +372,18 @@ if st.session_state.results_three:
         dl_key_prefix="dl_three"
     )
 
-        st.subheader("💾 ZIP一括ダウンロード")
-        out_mem = io.BytesIO()
-        with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name, data in st.session_state.results_three:
-                zf.writestr(name, data)
-        zip_name = f"genericBM_1to2_{datetime.now().strftime('%Y%m%d')}.zip"
-        st.download_button(
-            "📥 ZIP一括DL", out_mem.getvalue(),
-            file_name=zip_name, mime="application/zip"
-        )
+    # ZIP 一括DL
+    st.subheader("💾 ZIP一括ダウンロード")
+    out_mem = io.BytesIO()
+    with zipfile.ZipFile(out_mem, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in results:
+            zf.writestr(name, data)
+    st.download_button(
+        "📥 ZIP一括DL", out_mem.getvalue(),
+        file_name=f"{zip_prefix}_{datetime.now().strftime('%Y%m%d')}.zip",
+        mime="application/zip"
+    )
+
 
         if st.session_state.preview_files_three:
             st.markdown("---")
