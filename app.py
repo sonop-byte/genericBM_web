@@ -1,10 +1,10 @@
-# app.py — genericBM Web 最終安定版（1対1専用 / DPI=72・96・144）
+# app.py — genericBM Web 最終安定版（1対1専用 / 上限20ペアを5件ずつバッチ処理）
 # 仕様：
 # ・タブ：📄 2ファイル比較（1対1）のみ（1対2は削除）
 # ・ラベル色：Before #990099 / After #008000
 # ・DPI選択：72 / 96 / 144（初期値 144）
-# ・1ファイル上限 50MB、合計上限 100MB（メモリ保護・無料枠≈1GB想定）
-# ・1回の比較で最大3ペアまで処理
+# ・1ファイル上限 50MB、合計上限 100MB（無料枠≈1GB想定の保護）
+# ・一度の比較：最大20ペアまで、5件ずつバッチ処理
 # ・プレビューは実寸の70%で最大3ページ表示、同時1件まで
 # ・「比較を開始」時に前回の結果とプレビューをクリア
 
@@ -31,8 +31,9 @@ MAX_UPLOAD_MB = 50
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 MAX_TOTAL_MB = 100
 MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024
-MAX_PAIRS_PER_RUN = 3   # 1回で比較する最大ペア
-MAX_PREVIEWS = 1        # 同時プレビュー上限
+MAX_PAIRS_PER_RUN = 20   # ← 一度の比較で最大20ペアまで処理
+BATCH_SIZE = 5           # ← 5件ずつバッチ処理
+MAX_PREVIEWS = 1         # 同時プレビュー上限（設計として1件）
 
 # ===== ページ設定 =====
 ICON_PATH = "gBmicon.png"
@@ -217,33 +218,57 @@ with tab_two:
         st.session_state.preview_files_two.clear()
         st.session_state.run_two = True
 
-    # 生成処理
+    # 生成処理（バッチ化：5件ずつ / 上限20ペア）
     if st.session_state.run_two:
         st.session_state.results_two.clear()
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
+                # アップロードを一時保存
                 b_paths, a_paths = [], []
                 for f in before_files_two:
-                    p = os.path.join(tmpdir, f"b_{f.name}"); save_uploaded_to(p, f); b_paths.append(p)
+                    p = os.path.join(tmpdir, f"b_{f.name}")
+                    save_uploaded_to(p, f)
+                    b_paths.append(p)
                 for f in after_files_two:
-                    p = os.path.join(tmpdir, f"a_{f.name}"); save_uploaded_to(p, f); a_paths.append(p)
+                    p = os.path.join(tmpdir, f"a_{f.name}")
+                    save_uploaded_to(p, f)
+                    a_paths.append(p)
 
-                total_pairs = min(len(b_paths), len(a_paths), MAX_PAIRS_PER_RUN)
+                # ペア数を決定
+                pairs_available = min(len(b_paths), len(a_paths))
+                total_pairs = min(pairs_available, MAX_PAIRS_PER_RUN)
+
                 prog = st.progress(0)
                 status = st.empty()
 
-                for i in range(total_pairs):
-                    b, a = b_paths[i], a_paths[i]
-                    out_name = add_date_suffix(f"{safe_base(b)}vs{safe_base(a)}.pdf")
-                    out_path = os.path.join(tmpdir, out_name)
-                    status.write(f"🔄 生成中: {i+1}/{total_pairs}")
-                    generate_diff(b, a, out_path, dpi=dpi)
-                    with open(out_path, "rb") as fr:
-                        st.session_state.results_two.append((out_name, fr.read()))
-                    prog.progress(int((i+1)/total_pairs*100))
+                # バッチ数（5件ずつ）
+                num_batches = (total_pairs + BATCH_SIZE - 1) // BATCH_SIZE
+                done = 0  # 進捗カウンタ
+
+                for bi in range(num_batches):
+                    start = bi * BATCH_SIZE
+                    end = min(start + BATCH_SIZE, total_pairs)
+                    status.write(f"🔄 バッチ {bi+1}/{num_batches}（{start+1}〜{end}件目）")
+
+                    # バッチ内を1件ずつ処理
+                    for i in range(start, end):
+                        b, a = b_paths[i], a_paths[i]
+                        out_name = add_date_suffix(f"{safe_base(b)}vs{safe_base(a)}.pdf")
+                        out_path = os.path.join(tmpdir, out_name)
+
+                        generate_diff(b, a, out_path, dpi=dpi)
+
+                        with open(out_path, "rb") as fr:
+                            st.session_state.results_two.append((out_name, fr.read()))
+
+                        done += 1
+                        prog.progress(int(done / total_pairs * 100))
+
                 status.write("✅ 比較が完了しました。")
+
             except Exception as e:
                 st.error(f"エラー: {e}")
+
         st.session_state.run_two = False
 
     # 結果表示
