@@ -1,4 +1,4 @@
-# app.py — genericBM Web 最終安定版（200MBチェック＋完全リセット付き）
+# app.py — genericBM Web 最終安定版
 # 仕様:
 # - 📄 2ファイル比較（1対1） / 📚 3ファイル比較（1対2）
 # - Before:#990099 / After:#008000
@@ -8,8 +8,6 @@
 # - 生成PDF/プレビューはセッション保持だが TTL=30分で自動削除
 # - 一時ファイルは TemporaryDirectory() から自動削除
 # - 同時利用はセッション分離で干渉なし
-# - NEW: 200MB超PDFをアップロード時にエラー表示＆処理停止（Web向け）
-# - NEW: サイドバーに「🔄 アプリを完全リセット」ボタン
 
 import os
 import io
@@ -44,14 +42,6 @@ st.set_page_config(
     page_icon=icon_img if icon_img else "🩺",
     layout="centered",
 )
-
-# ===== サイドバー：完全リセット =====
-def _reset_app():
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
-    st.rerun()
-
-st.sidebar.button("🔄 アプリを完全リセット", on_click=_reset_app)
 
 # ===== ヘッダ =====
 st.markdown(
@@ -111,25 +101,6 @@ def _purge_expired(items):
             if (now - ts) <= TTL_SECONDS:
                 kept.append((n, b, ts))
     return kept
-
-# ===== NEW: アップロードサイズ上限（Webは200MB推奨） =====
-MAX_UPLOAD_MB = 200
-
-def _check_size(file, limit_mb: int = MAX_UPLOAD_MB) -> bool:
-    """UploadedFileのサイズをMBで確認し、超過ならエラー表示して False を返す"""
-    if not file:
-        return True
-    try:
-        size_mb = getattr(file, "size", 0) / (1024 * 1024)
-    except Exception:
-        return True  # 取得できない環境ではスキップ
-    if size_mb > limit_mb:
-        st.error(
-            f"『{getattr(file, 'name', 'ファイル')}』は {size_mb:.1f}MB です。"
-            f"アップロードするPDFは {limit_mb}MB 以下にしてください。"
-        )
-        return False
-    return True
 
 # ===== プレビュー（実寸70%） =====
 def show_pdf_inline(name: str, data_bytes: bytes) -> None:
@@ -217,15 +188,6 @@ with tab_two:
         st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600;">After 側PDF（複数可）</div>', unsafe_allow_html=True)
         after_files_two = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="after_two", label_visibility="collapsed")
 
-    # --- NEW: 200MBチェック（1対1） ---
-    ok_1to1 = True
-    for f in (before_files_two or []):
-        ok_1to1 &= _check_size(f)
-    for f in (after_files_two or []):
-        ok_1to1 &= _check_size(f)
-    if not ok_1to1:
-        st.stop()  # 以降のボタンや処理を表示しない
-
     if before_files_two and after_files_two and st.button("比較を開始（1対1）", key="btn_two"):
         st.session_state.results_two.clear()
         st.session_state.preview_files_two.clear()
@@ -262,13 +224,9 @@ with tab_two:
                         out_path = os.path.join(tmpdir, out_name)
 
                         status.write(f"🔄 生成中: {i+1}/{total} — {bdisp} vs {adisp}")
-                        # --- 推奨: 差分生成を保護 ---
-                        try:
-                            generate_diff(b, a, out_path, dpi=dpi)
-                            with open(out_path, "rb") as fr:
-                                st.session_state.results_two.append((out_name, fr.read(), _now_ts()))
-                        except Exception as e:
-                            st.error(f"差分生成に失敗: {bdisp} vs {adisp} — {type(e).__name__}: {e}")
+                        generate_diff(b, a, out_path, dpi=dpi)
+                        with open(out_path, "rb") as fr:
+                            st.session_state.results_two.append((out_name, fr.read(), _now_ts()))
                         prog.progress(int((i + 1) / total * 100))
                     status.write("✅ 比較が完了しました。")
             except Exception:
@@ -319,14 +277,6 @@ with tab_three:
     st.markdown(f'<div style="color:{AFTER_LABEL_COLOR}; font-weight:600; margin-top:16px;">After 側PDF（2つ）</div>', unsafe_allow_html=True)
     after_files_three = st.file_uploader("", type=["pdf"], accept_multiple_files=True, key="after_three", label_visibility="collapsed")
 
-    # --- NEW: 200MBチェック（1対2） ---
-    ok_1to2 = True
-    ok_1to2 &= _check_size(before_file_three)
-    for f in (after_files_three or []):
-        ok_1to2 &= _check_size(f)
-    if not ok_1to2:
-        st.stop()
-
     can_run_three = (
         before_file_three is not None
         and after_files_three is not None
@@ -361,14 +311,9 @@ with tab_three:
                     out_tmp = os.path.join(tmpdir, out_name)
 
                     status.write(f"🔄 生成中: {i}/{total} — {bdisp} vs {adisp}")
-                    # --- 推奨: 差分生成を保護 ---
-                    try:
-                        generate_diff(before_path, a_path, out_tmp, dpi=dpi)
-                        with open(out_tmp, "rb") as fr:
-                            st.session_state.results_three.append((out_name, fr.read(), _now_ts()))
-                    except Exception as e:
-                        st.error(f"差分生成に失敗: {bdisp} vs {adisp} — {type(e).__name__}: {e}")
-
+                    generate_diff(before_path, a_path, out_tmp, dpi=dpi)
+                    with open(out_tmp, "rb") as fr:
+                        st.session_state.results_three.append((out_name, fr.read(), _now_ts()))
                     prog.progress(int(i / total * 100))
                 status.write("✅ 比較が完了しました。")
             except Exception:
