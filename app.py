@@ -24,6 +24,35 @@ import fitz  # PyMuPDF
 
 from pdf_diff_core_small import generate_diff
 
+# ===== アップロード上限（150MB/ファイル） =====
+MAX_UPLOAD_MB = 150
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+def _too_large(files):
+    """UploadedFile | list[UploadedFile] を受け取り、150MB超の [(name, size_mb)] を返す"""
+    if not files:
+        return []
+    if not isinstance(files, (list, tuple)):
+        files = [files]
+    bad = []
+    for f in files:
+        try:
+            sz = getattr(f, "size", None)
+            if sz is not None and sz > MAX_UPLOAD_BYTES:
+                bad.append((f.name, sz / (1024*1024)))
+        except Exception:
+            pass
+    return bad
+
+def _render_size_errors(bads, label):
+    """サイズ超過のエラー表示をまとめて出す"""
+    if not bads:
+        return
+    lines = [f"**{label}** に 150MB を超えるファイルがあります："]
+    for n, mb in bads:
+        lines.append(f"- {n} — {mb:.1f}MB（150MB超）")
+    st.error("\n".join(lines))
+
 # ===== 基本設定 =====
 BEFORE_LABEL_COLOR = "#990099"
 AFTER_LABEL_COLOR  = "#008000"
